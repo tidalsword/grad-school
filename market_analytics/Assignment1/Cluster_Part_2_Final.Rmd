@@ -1,0 +1,327 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+Note that the following 3 variables are treated as outcome variables and will not be considered to be input variables for cluster analysis
+  .	"Satisfaction on the insurance firm's customer service"
+  .	"Satisfaction on the insurance policy"
+  .	"Will consider switch"
+
+
+For this assignment, you will complete following steps:
+
+.	Examine the data structure
+.	Demonstrate the descriptive information of the variables that you are interested in
+    
+.	Select numeric variables and categorical variables (mixed data) and use PAM() to conduct cluster analysis
+    o	Decide the number of clusters
+    o	Decide the best cluster solution
+    o	Show the differences of key factors' characteristics across clusters 
+    o	Check the differences of the 3 outcome variables across the clusters
+    o	Discuss your findings and implications to understand employee profiles and satisfaction
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = normalizePath("C:/Users/ca034330/Google Drive/Corey - School/!Spring 2019 B/Assignment1/data/"))
+#knitr::opts_knit$set(root.dir = normalizePath("D:/Google Drive/Corey - School/!Spring 2019 B/Assignment1/data/"))
+```
+
+```{r}
+library(cluster) 
+library(NbClust) 
+library(factoextra)
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(Rtsne)
+```
+
+```{r data_load}
+w <- read_xlsx("Employee profile and satisfaction data.xlsx",col_names = TRUE)
+```
+
+```{r}
+names(w)
+summary(w)
+str(w)
+```
+
+```{r}
+w.numeric<- as.data.frame(w[,c(5,11,13:22,24)])
+w.fact<- as.data.frame(w[,c(3,4,7:10,12,23,25)])
+w.fact[] <- lapply(w.fact, factor)
+```
+
+```{r}
+w.fact$'Job Involvement' <- factor(w.fact$'Job Involvement',levels = c("Low", "Medium", "High", "Very High"))
+w.fact$'Environment Satisfaction' <- factor(w.fact$'Environment Satisfaction',levels = c("Low", "Medium", "High", "Very High"))
+w.fact$'Work Life Balance' <- factor(w.fact$'Work Life Balance', levels = c("Bad", "Good", "Better", "Best"))
+w.fact$'Education' <- factor(w.fact$'Education', levels = c("Below College", "College", "Bachelor", "Master", "Doctor"))
+```
+
+```{r}
+w1<- cbind(w.numeric, w.fact)
+```
+
+```{r}
+numComplete <- NbClust(w1, distance="euclidean", min.nc=2, max.nc=10,
+                       method="complete", index="all")
+```
+
+
+```{r}
+gower_dist <- daisy(w1, metric = "gower", type = list(logratio = 3))
+```
+
+```{r}
+gower_mat <- as.matrix(gower_dist)
+```
+
+```{r}
+w1[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), arr.ind = TRUE)[1, ], ]
+```
+
+```{r}
+w1[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), arr.ind = TRUE)[1, ], ]
+```
+
+
+
+```{r}
+sil_width <- c(NA)
+for(i in 2:10){  
+  pam_fit <- pam(gower_dist, diss = TRUE, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+```
+
+```{r}
+k <- 2
+pam_fit <- pam(gower_dist, diss = TRUE, k)
+pam_results <- w1 %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+pam_results$the_summary
+```
+
+```{r}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering))
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+
+```{r}
+w.clust <-cbind(w, pam_fit$clustering)
+```
+
+```{r}
+Freqs <- table(w.clust$"Will consider switch", w.clust$"pam_fit$clustering")
+Freqs
+```
+
+
+```{r}
+Freqs <- table(w.clust$"Satisfaction on the insurance policy", w.clust$"pam_fit$clustering")
+Freqs
+```
+
+```{r}
+Freqs <- table(w.clust$"Satisfaction on the insurance firm customer service", w.clust$"pam_fit$clustering")
+Freqs
+```
+  .	"Satisfaction on the insurance firm's customer service"
+  .	"Satisfaction on the insurance policy"
+
+```{r}
+pam(w1, 9, metric = c("euclidean"))
+```
+
+```{r}
+library(factoextra)
+set.seed(1234)
+km.res <- eclust(w.clust, "pam", k = 9, graph = FALSE)
+
+table(km.res$cluster)
+fviz_cluster(km.res, geom = "point", ellipse.type = "norm",
+             palette = "jco", ggtheme = theme_minimal())
+```
+
+```{r}
+fviz_nbclust(w.clust,FUNcluster = cluster::pam, method = "wss") +
+geom_vline(xintercept = 3, linetype = 2)
+```
+
+
+km.res <- eclust(w2, "kmeans", k = 2, nstart = 25, graph = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+w2<- scale(w1)
+summary(w2)
+
+```
+
+```{r}
+numComplete <- NbClust(w2, distance="euclidean", min.nc=2, max.nc=10,
+                       method="complete", index="all")
+
+```
+
+```{r}
+names(numComplete)
+```
+
+```{r}
+numComplete$Best.nc
+```
+
+```{r}
+dis = dist(w2, method="euclidean")
+```
+
+```{r}
+hc = hclust(dis, method="complete")
+plot(hc, hang=-1,labels=FALSE, main="Complete-Linkage")
+```
+
+```{r}
+comp4 <- cutree(hc, 4)
+```
+
+```{r}
+library(NbClust) 
+NbClust(w2, distance="euclidean", min.nc=2, max.nc=10,
+        method="ward.D2", index="all")
+
+```
+
+```{r}
+hcWard <- hclust(dis, method="ward.D2")
+
+plot(hcWard, labels=FALSE, main="Ward's-Linkage")
+
+ward3 <- cutree(hcWard, 3)
+
+table(ward3)
+```
+
+```{r}
+table(comp4, ward3)
+```
+
+```{r}
+aggregate(w2,list(comp4),mean)
+
+par(mfrow=c(1,2))
+w3<- w2
+
+```
+
+```{r}
+w4<-as.data.frame(cbind(w1, comp4, ward3))
+
+table(w4$comp4,w4$ward3)
+
+```
+
+```{r}
+dis = dist(w2, method="euclidean")
+hc = hclust(dis, method="complete")
+
+```
+
+```{r}
+res.coph <- cophenetic(hc)
+```
+
+```{r}
+cor(dis, res.coph)
+```
+
+```{r}
+NbClust(w2, min.nc=2, max.nc=15, method="kmeans")
+```
+
+```{r}
+set.seed(1234)
+km<- kmeans(w2,2,nstart=25)
+
+```
+
+```{r}
+table(km$cluster)
+```
+
+```{r}
+w3<-as.data.frame(cbind(w1, km$cluster))
+colnames(w3)[14]<-"clusters"
+
+```
+
+```{r}
+aggregate(w3[1:13], by=list(w3$clusters), FUN=mean)
+```
+
+```{r}
+library(factoextra)
+set.seed(1234)
+km.res <- eclust(w2, "kmeans", k = 2, nstart = 25, graph = FALSE)
+
+table(km.res$cluster)
+fviz_cluster(km.res, geom = "point", ellipse.type = "norm",
+             palette = "jco", ggtheme = theme_minimal())
+
+```
+
+```{r}
+library(clValid)
+```
+
+```{r}
+clmethods <- c("hierarchical","kmeans","pam")
+intern <- clValid(w2, nClust = 2:4,
+                  clMethods = clmethods, validation = "internal" )
+```
+
+```{r}
+summary(intern)
+```
+
+SECTION 1 END HERE!

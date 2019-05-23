@@ -1,0 +1,601 @@
+---
+title: "Corey Austen - Homework 1"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+editor_options: 
+  chunk_output_type: inline
+---
+
+https://towardsdatascience.com/a-gentle-introduction-on-market-basket-analysis-association-rules-fa4b986a40ce
+
+ASSIGNMENT PART 1
+
+Suggested hints to think about
+
+    1.	Given this large dataset, can we further examine the associations in specific subsets and view similarities and differences across the groups? For example, we can possibly further check how the associations differ in different time periods (you define the time     frames). Is it a good idea to check associations in individual countries because we can see there is a country variable in this   dataset?
+
+    2.	In addition to the general associations, can we use "Quantity" to further enrich the analysis? 
+
+    3.	In this dataset, you can observe two ID variables, "InvoiceNo" and "CustomerID". How do they add information to the analysis? Can we do MBA on each of them and then watch any differences? 
+
+In sum, your goal is to use MBA to mine this dataset and you can do a number of comparisons and contrasts with the combination of the ideas suggested above and with the analysis examples you had in our Week 2 practices and tasks.
+
+
+You report will be structured as follows:
+
+  1.	Dataset overview
+  2.	Descriptive information of the variables
+  3.	Check basic relationships between variables
+  4.	Your analysis process including codes, key results of each step, and your discussion on these steps 
+  5.	Generate insights and recommendations for marketing strategies based on your data analysis. 
+    For example: 
+      Product assortment deployments
+      Complementary/supporting product pairs/groups
+      Timing of deploying product lines
+      Quantity adjustment
+      Loyalty programs
+      Promotions of new products
+      Pricing product bundles
+      And more
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = normalizePath("C:/Users/ca034330/Google Drive/Corey - School/!Spring 2019 B/Assignment1/data/"))
+#knitr::opts_knit$set(root.dir = normalizePath("D:/Google Drive/Corey - School/!Spring 2019 B/Assignment1/data/"))
+```
+
+```{r include=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(ggplot2)
+library(lubridate)
+library(arules)
+library(arulesViz)
+library(plyr)
+library(cluster) 
+library(NbClust) 
+library(factoextra)
+library(Rtsne)
+library(clValid)
+```
+
+```{r include=FALSE}
+retail <- read_excel('Online Retail.xlsx')
+retail <- retail[complete.cases(retail), ]
+retail <- retail %>% mutate(Description = as.factor(Description))
+retail <- retail %>% mutate(Country = as.factor(Country))
+retail$Date <- as.Date(retail$InvoiceDate)
+retail$Time <- format(retail$InvoiceDate,"%H:%M:%S")
+retail$InvoiceNo <- as.numeric(as.character(retail$InvoiceNo))
+
+glimpse(retail)
+```
+
+```{r echo=FALSE, message=FALSE}
+retail$Time <- as.factor(retail$Time)
+a <- hms(as.character(retail$Time))
+retail$Time = hour(a)
+
+retail %>% 
+  ggplot(aes(x=Time)) + 
+  geom_histogram(stat="count",fill="purple") +
+  ggtitle("Amount purchased by time of day") +
+  xlab("Time of Day (24hr)") +
+  ylab("Items Purchased")
+```
+
+```{r}
+retail %>% 
+  ggplot(aes(x=Date)) + 
+  geom_freqpoly(stat="count",color="purple") +
+  ggtitle("Number of items purchased per day") +
+  xlab("Date") +
+  ylab("Items Purchased")
+
+```
+
+
+```{r echo=FALSE, message=FALSE}
+detach("package:plyr", unload=TRUE)
+```
+
+```{r echo=FALSE, message=FALSE}
+retail %>% 
+  group_by(InvoiceNo) %>% 
+  summarize(n_items = mean(Quantity)) %>%
+  ggplot(aes(x=n_items))+
+  geom_histogram(fill="purple", bins = 100000) + 
+  geom_rug()+
+  coord_cartesian(xlim=c(0,80))+
+  ggtitle("Amount purchased by each customer") +
+  xlab("Number of Customers") +
+  ylab("Number of Items Purchased")
+
+```
+
+
+```{r echo=FALSE, message=FALSE}
+tmp <- retail %>% 
+  group_by(StockCode, Description) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+tmp <- head(tmp, n=10)
+tmp
+```
+
+```{r echo=FALSE, message=FALSE}
+tmp %>% 
+  ggplot(aes(x=reorder(Description,count), y=count))+
+  geom_bar(stat="identity",fill="purple")+
+  coord_flip() +
+  xlab("Item Name") +
+  ylab("Number of Items Purchased")
+```
+
+```{r include=FALSE}
+retail_sorted <- retail[order(retail$CustomerID),]
+library(plyr)
+itemList <- ddply(retail,c("CustomerID","Date"), 
+                       function(df1)paste(df1$Description, 
+                       collapse = ","))
+```
+
+```{r include=FALSE}
+itemList$CustomerID <- NULL
+itemList$Date <- NULL
+colnames(itemList) <- c("items")
+```
+
+```{r include=FALSE}
+write.csv(itemList,"market_basket.csv", quote = FALSE, row.names = TRUE)
+```
+
+```{r include=FALSE}
+tr <- read.transactions('market_basket.csv', format = 'basket', sep=',')
+summary(tr)
+```
+
+```{r echo=FALSE}
+itemFrequencyPlot(tr, topN=10, type='absolute')
+```
+
+```{r include=FALSE}
+rules <- apriori(tr, parameter = list(supp=0.001, conf=0.8))
+rules <- sort(rules, by='confidence', decreasing = TRUE)
+summary(rules)
+```
+
+```{r}
+inspect(rules[1:10])
+```
+
+```{r}
+topRules10 <- rules[1:10]
+topRules5 <- rules[1:5]
+plot(topRules10)
+```
+
+```{r}
+plot(topRules5, method="graph")
+```
+
+```{r}
+#plot(topRules5, method = "grouped")
+```
+
+ASSIGNMENT PART 2 A
+
+For this assignment, you will complete following steps:
+
+.	Examine the data structure
+.	Demonstrate the descriptive information of the variables that you are interested in
+
+.	Select only numeric variables to conduct cluster analysis
+    o	Decide the number of clusters
+    o	Try and compare different linkage options
+    o	Try different cluster methods such as Hierarchical Clustering and Kmeans
+    o	Decide the best cluster solution
+    o	Show the differences of key factors' characteristics across clusters
+    o	Check the differences of the 3 outcome variables across the clusters
+    o	Discuss your findings and implications to understand employee profiles and satisfaction
+    
+.	Select numeric variables and categorical variables (mixed data) and use PAM() to conduct cluster analysis
+    o	Decide the number of clusters
+    o	Decide the best cluster solution
+    o	Show the differences of key factors' characteristics across clusters 
+    o	Check the differences of the 3 outcome variables across the clusters
+    o	Discuss your findings and implications to understand employee profiles and satisfaction
+
+```{r data_load}
+emp.data<- read_xlsx("Employee profile and satisfaction data.xlsx",col_names = TRUE)
+```
+
+```{r}
+names(emp.data)
+summary(emp.data)
+str(emp.data)
+```
+
+```{r include=FALSE}
+emp.num<- as.data.frame(emp.data[,c(5,11,13:22,24)])
+```
+
+```{r include=FALSE}
+emp.num.scale<- scale(emp.num)
+summary(emp.num.scale)
+
+```
+
+```{r}
+numComplete <- NbClust(emp.num.scale, distance="euclidean", min.nc=2, max.nc=10,
+                       method="complete", index="all")
+
+```
+
+```{r include=FALSE}
+names(numComplete)
+```
+
+```{r}
+numComplete$Best.nc
+```
+
+```{r}
+dis = dist(emp.num.scale, method="euclidean")
+```
+
+```{r}
+hc = hclust(dis, method="complete")
+plot(hc, hang=-1,labels=FALSE, main="Complete-Linkage")
+```
+
+```{r include=FALSE}
+comp4 <- cutree(hc, 5)
+```
+
+```{r}
+NbClust(emp.num.scale, distance="euclidean", min.nc=2, max.nc=10,
+        method="ward.D2", index="all")
+```
+
+```{r}
+hcWard <- hclust(dis, method="ward.D2")
+
+plot(hcWard, labels=FALSE, main="Ward's-Linkage")
+
+ward3 <- cutree(hcWard, 5)
+
+table(ward3)
+```
+
+```{r}
+table(comp4, ward3)
+```
+
+```{r}
+aggregate(emp.num.scale,list(comp4),mean)
+
+par(mfrow=c(1,2))
+emp.num.clust<- emp.num.scale
+
+```
+
+```{r}
+emp.num.ward<-as.data.frame(cbind(emp.num, comp4, ward3))
+
+table(emp.num.ward$comp4,emp.num.ward$ward3)
+```
+
+```{r}
+dis = dist(emp.num.scale, method="euclidean")
+hc = hclust(dis, method="complete")
+```
+
+```{r}
+res.coph <- cophenetic(hc)
+```
+
+```{r}
+cor(dis, res.coph)
+```
+
+```{r}
+NbClust(emp.num.scale, min.nc=2, max.nc=15, method="kmeans")
+```
+
+```{r include=FALSE}
+set.seed(1234)
+km<- kmeans(emp.num.scale,2,nstart=50)
+```
+
+```{r}
+table(km$cluster)
+```
+
+```{r}
+emp.num.clust<-as.data.frame(cbind(emp.num, km$cluster))
+colnames(emp.num.clust)[14]<-"clusters"
+
+```
+
+```{r}
+aggregate(emp.num.clust[1:13], by=list(emp.num.clust$clusters), FUN=mean)
+```
+
+```{r}
+set.seed(1234)
+km.res <- eclust(emp.num.scale, "hclust", k = 2, nstart = 25, graph = FALSE)
+
+table(km.res$cluster)
+fviz_cluster(km.res, geom = "point", ellipse.type = "norm",
+             palette = "jco", ggtheme = theme_minimal())
+
+```
+
+```{r include=FALSE}
+#clmethods <- c("hierarchical","kmeans","pam")
+#intern <- clValid(emp.num.scale, nClust = 2:6,
+#                  clMethods = clmethods, validation = "internal" )
+```
+
+```{r}
+#optimalScores(intern)
+```
+
+```{r}
+#plot(intern)
+```
+
+```{r}
+str(km.res)
+```
+
+
+```{r}
+emp.num.scale.c<-cbind(emp.num.scale, km$cluster)
+colnames(emp.num.scale.c)[14]<-c("Group")
+
+df.m <- melt(emp.num.scale.c, id.var = "Group")
+df.m$Group <- as.character(df.m$Group)
+```
+
+
+```{r}
+p <- ggplot(data = df.m, aes(x=variable, y=value)) +
+  geom_boxplot(aes(fill = Group),outlier.size = 1) +
+  facet_wrap( ~ variable, scales="free", ncol = 2) +
+  xlab(label = NULL) + ylab(label = NULL) + ggtitle("Boxplots for 2 Groups of Clients") +
+  guides(fill=guide_legend(title="Groups"))
+```
+
+```{r}
+p
+```
+
+
+```{r}
+GroupsSummary <- describeBy(emp.num.scale.c[,1:13], emp.num.scale.c[,'Group'])
+
+kable(GroupsSummary[[1]], digits = 2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+GroupsSummary <- describeBy(emp.num.scale.c[,1:13], emp.num.scale.c[,'Group'])
+
+kable(GroupsSummary[[2]], digits = 2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+ASSIGNMENT PART 2 B
+
+For this assignment, you will complete following steps:
+
+.	Examine the data structure
+.	Demonstrate the descriptive information of the variables that you are interested in
+    
+.	Select numeric variables and categorical variables (mixed data) and use PAM() to conduct cluster analysis
+    o	Decide the number of clusters
+    o	Decide the best cluster solution
+    o	Show the differences of key factors' characteristics across clusters 
+    o	Check the differences of the 3 outcome variables across the clusters
+    o	Discuss your findings and implications to understand employee profiles and satisfaction
+    
+Your findings and implications would include, but not limited to, the discussions about:
+
+.	Cluster sizes
+.	Cluster nature/characteristics/differences
+.	The key differences of performance factors on clusters
+.	Patterns that are expected and in line with commonly shared business sense
+.	Any surprising and expected patterns 
+.	The conclusions of likely driving factors for satisfaction items
+.	How the firm can use the analysis results in their marketing strategies
+
+
+```{r include=FALSE}
+emp.numeric<- as.data.frame(emp.data[,c(5,11,13:22,24)])
+emp.fact<- as.data.frame(emp.data[,c(3,4,7:10,12,23,25,26)])
+emp.fact[] <- lapply(emp.fact, factor)
+```
+
+```{r include=FALSE}
+emp.fact$'Job Involvement' <- factor(emp.fact$'Job Involvement',levels = c("Low", "Medium", "High", "Very High"))
+emp.fact$'Environment Satisfaction' <- factor(emp.fact$'Environment Satisfaction',levels = c("Low", "Medium", "High", "Very High"))
+emp.fact$'Work Life Balance' <- factor(emp.fact$'Work Life Balance', levels = c("Bad", "Good", "Better", "Best"))
+emp.fact$'Education' <- factor(emp.fact$'Education', levels = c("Below College", "College", "Bachelor", "Master", "Doctor"))
+```
+
+```{r include=FALSE}
+emp.num.fact<- cbind(emp.numeric, emp.fact)
+```
+
+```{r include=FALSE}
+gower_dist <- daisy(emp.num.fact, metric = c("gower"))
+```
+
+```{r}
+str(gower_dist)
+```
+
+
+```{r include=FALSE}
+gower_mat <- as.matrix(gower_dist)
+```
+
+```{r include=FALSE}
+emp.num.fact[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), arr.ind = TRUE)[1, ], ]
+emp.num.fact[which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]), arr.ind = TRUE)[1, ], ]
+```
+
+```{r}
+sil_width <- c(NA)
+for(i in 2:10){  
+  pam_fit <- pam(gower_dist, diss = TRUE, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+```
+
+```{r include=FALSE}
+k <- 3
+pam_fit <- pam(gower_dist, diss = TRUE, k)
+pam_results <- emp.num.fact %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+pam_results$the_summary
+```
+
+```{r}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering))
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+
+```{r include=FALSE}
+
+emp.clust1 <-cbind(emp.data, pam_fit$clustering)
+```
+
+```{r}
+emp.clust2 <-cbind(emp.data, emp.num.scale.c[,'Group'])
+colnames(emp.clust2)[colnames(emp.clust2)==c[,(30)]] <- "cluster"
+```
+
+```{r}
+head(emp.clust2[,(30)])
+```
+
+```{r}
+Freqs1 <- table(emp.clust2$"Will consider switch", emp.clust2[,(30)])
+Freqs1
+```
+
+
+```{r}
+Freqs2 <- table(emp.clust2$"Satisfaction on the insurance policy", emp.clust2[,(30)])
+Freqs2
+```
+
+```{r}
+Freqs3 <- table(emp.clust2$"Satisfaction on the insurance firm customer service", emp.clust2[,(30)])
+Freqs3
+```
+```{r include=FALSE}
+set.seed(1234)
+pam.res <- eclust(gower_dist, "pam", k = 2, nboot = 2, graph = FALSE)
+
+table(pam.res$cluster)
+fviz_cluster(pam.res, geom = "point", ellipse.type = "norm",
+             palette = "jco", ggtheme = theme_minimal())
+
+```
+
+```{r}
+fviz_cluster(pam.res, geom = "point", ellipse.type = "norm",
+             palette = "jco", ggtheme = theme_minimal())
+```
+
+
+```{r include=FALSE}
+clmethods <- c("pam")
+intern <- clValid(gower_mat, nClust = 2:6,
+                  clMethods = clmethods, validation = "internal" )
+```
+
+```{r}
+optimalScores(intern)
+```
+
+```{r}
+plot(intern)
+```
+
+
+```{r}
+library(reshape2)
+```
+
+```{r}
+pm <- eclust(gower_dist,FUNcluster="pam", k=3 ,hc_metric = "euclidean", graph = TRUE)
+```
+
+```{r}
+fviz_cluster(pm)
+```
+
+
+```{r}
+GroupsSummary <- describeBy(gower_dist.c[,1:13], gower_dist.c[,'Group'])
+
+kable(GroupsSummary[[1]], format = "html", digits = 2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+GroupsSummary <- describeBy(ToCluster.c[,1:13], ToCluster.c[,'Group'])
+
+kable(GroupsSummary[[2]], format = "html", digits = 2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+GroupsSummary <- describeBy(ToCluster.c[,1:13], ToCluster.c[,'Group'])
+
+kable(GroupsSummary[[3]], format = "html", digits = 2) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+Freqs4 <- table(emp.clust1$"Will consider switch", emp.clust1[,(30)])
+Freqs4
+```
+
+cluster 1 734
+cluster 2 736
+
+
+```{r}
+Freqs5 <- table(emp.clust1$"Satisfaction on the insurance policy", emp.clust1[,(30)])
+Freqs5
+```
+
+```{r}
+Freqs6 <- table(emp.clust1$"Satisfaction on the insurance firm customer service", emp.clust1[,(30)])
+Freqs6
+```
