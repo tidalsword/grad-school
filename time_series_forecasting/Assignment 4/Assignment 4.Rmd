@@ -1,0 +1,147 @@
+---
+title: "Assignment 4"
+author: "Corey Austen"
+date: "December 10, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn=-1)
+```
+
+```{r, include=FALSE}
+library(tseries)
+library(zoo)
+library(ggplot2)
+library(forecast)
+library(expsmooth)
+library(fpp)
+library(xlsx)
+```
+
+
+From Hyndman, Ch 9. Ex 5 & 6*
+
+### Problem 5.
+
+####  a. What sort of ARIMA model is identified for $\eta_t$?
+  
+  ARIMA(1,1,2)(1,1,2)[12]
+  
+####  b. Based on the chart in the book, explain what the estimates of beta 1 and beta 2 tell us about electricity consumption.
+  
+  The coefficient for the heating months is lower than that of the cooling months, so the temperature in the summer has a higher predictive weight than the temperatures in the winter.  This means that as the average monthly temperature in the summer months rises above 18 degrees celcius, the monthly total of kilowatt-hours of electricity will increase at a faster rate than that of the winter months.
+  
+####  c. Write the equation in a form more suitable for forecasting.
+
+The model would be written out as:
+ 
+$\displaystyle(y^*_t-y^*_{t-1}-y^*_{t-12}+y^*_{t-13})=\beta_1(x^*_{1,t-1}-x^*_{1,t-12}+x^*_{1,t-13})+\beta_2(x^*_{2,t-1}-x^*_{2,t-12}+x^*_{2,t-13})+\displaystyle\frac{1-\theta_1B}{1-\phi_{12}B^{12}-\phi_{24}B^{24}}\varepsilon_t$
+  
+####  d. Describe how this model could be used to forecast electricity demand for the next 12 months.
+
+The model would look at the previous 2 years of eletricity consumption and the average monthly temperatures relative to 18$^o$ Celcius, then forecast the new electricity consumption.  To get the forecast for the next 12 months, you could use the predicted monthly temperatures for the next 12 months based on previous weather patterns.  The temperature is seperated into heating months ($x_{1,t}$) and cooling months ($x_{2,t}$), both of which are the absolute value of the distance from 18$^o$ Celcius.  Then we would take the square root of all temperatures, which are then used by the model as $x^*_{1,t}$ and $x^*_{2,t}$ respectively.  The predicted value by the model ($y^*_t$) is actually $log(y_t)$, so the $y_t$ value would then be charted for each month over the 12 month period.
+
+####  e. Explain why the $\eta_t$ term should be modelled with an ARIMA model rather than modelling the data using a standard regression package. In your discussion, comment on the properties of the estimates, the validity of the standard regression results, and the importance of the $\eta_t$ model in producing forecasts.
+
+The $\eta_t$ should be modeled with an ARIMA model rather than a standard regression because of auto-correlation.  The errors in the time series model will auto-correlate, but the assumptions of a standard regression require that the errors not auto-correlate.  If the $\eta_t$ was modelled with a standard regression, the estimates would be unreliable, the standard errors would be incorrect, and the results would be invalid.  Forecasting this way would lead to incorrect predictions.  The $\eta_t$ allows us to use the ARIMA models for auto-correlated data while also performing a regression model with the other multiple covariates.
+
+
+### Problem 6.
+
+#### a. Develop an appropriate dynamic regression model with Fourier terms for the seasonality. Use the AIC to select the number of Fourier terms to include in the model. (You will probably need to use the same Box-Cox transformation you identified previously.)
+
+```{r part_a}
+workdir <- "C:/Users/ca034330/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 4"
+#workdir <- "D:/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 4"
+setwd(workdir)
+#pulling in the retail data set
+retail <- read.xlsx("retail.xlsx", sheetIndex = 1, startRow = 2)
+#Selecting the same data I used in Assignment 1 for consistancy's sake
+retail_ts <- ts(retail[,"A3349575C"], frequency=12, start=c(1982,4))
+autoplot(retail_ts)
+# Getting the optimal lambda for Box-Cox transformations
+lambda <- BoxCox.lambda(retail_ts)
+# selecting the number of Fourier pairs.  Found a useful method for finding K online.
+min_AIC <- Inf
+K_min_Aic <- 0
+for(num in c(1:6)){
+  retail_ts_tslm <- tslm(retail_ts ~ trend + fourier(retail_ts, K = num), lambda = lambda)
+  AIC <- CV(retail_ts_tslm)["AIC"]
+  
+  if(AIC < min_AIC){min_AIC <- AIC
+    K_min_Aic <- num
+  }
+}
+# create harmonic regression model using the selected number of Fourier pairs.
+retail_ts_tslm <- tslm(retail_ts ~ trend + fourier(retail_ts, K = K_min_Aic), lambda = lambda)
+autoplot(retail_ts) + autolayer(retail_ts_tslm$fitted.values)
+# seasonal patterns look similar.
+# Fit dynamic regression model.
+retail_ts_auto <- auto.arima(retail_ts, lambda = lambda,
+  xreg = cbind(Fourier = fourier(retail_ts, K = K_min_Aic), time = time(retail_ts)))
+retail_ts_auto
+# ARIMA(1,0,1)(2,0,0)[12] model was chosen.
+autoplot(retail_ts) + autolayer(retail_ts_auto$fitted)
+```
+
+####  b. Check the residuals of the fitted model. Does the residual series look like white noise?
+
+The significance of lags 27 and 36 are over the threshold, but they are far enough out that it shouldn't matter.  The errors are normally distributed as well, so we should be good.
+
+```{r part_b}
+checkresiduals(retail_ts_auto)
+summary(retail_ts_auto)
+```
+
+####  c. Compare the forecasts with those you obtained earlier using alternative models. (use an SES and/or Auto.ARIMA model for your baseline)
+
+The second model did slightly better than the first one since the RSME and the AIC are lower with the second model.
+
+```{r part_c}
+#I'll create a new ARIMA model to compare the previous model against. (This takes a long time to reconcile.)
+retail_ts_auto2 <- auto.arima(retail_ts, lambda = lambda,
+  xreg = cbind(Fourier = fourier(retail_ts, K = K_min_Aic), time = time(retail_ts)), approximation = FALSE, stepwise = FALSE)
+retail_ts_auto2
+# ARIMA(1, 0, 2) was chosen as the second model.
+autoplot(retail_ts) + autolayer(retail_ts_auto2$fitted)
+checkresiduals(retail_ts_auto2)
+# Residuals look better than 
+
+#Time to compare some forecasts!
+
+# Get the latest data.
+retail_new <- read.xlsx("8501011.xlsx", sheetName = "Data1", startRow = 10)
+retail_new_ts <- ts(retail_new[, "A3349575C"], start = c(1982, 4), frequency = 12)
+# Creating a validation set.
+retail_new_test <- subset(retail_new_ts, start = length(retail_ts) + 1)
+# make a variable which takes future values of regressors.
+t <- time(retail_ts)
+xreg_new = cbind(Fourier = fourier(retail_ts, K = K_min_Aic, h = 36), time = t[length(t)] + seq(36)/12)
+# forecasting!
+fc_retail_ts_auto <- forecast(retail_ts_auto, h = 36, xreg = xreg_new)
+fc_retail_ts_auto2 <- forecast(retail_ts_auto2, h = 36, xreg = xreg_new)
+autoplot(fc_retail_ts_auto)
+autoplot(fc_retail_ts_auto2)
+
+```
+
+Looking at the charted predictions, they started to wander off around Janurary 2015.  The data showed that the sales continued to decrease, but the models predicted that this would increase instead.  However, it can definitely be seen that ARIMA(1,0,2) performed the best in this case.
+
+```{r}
+# Lets see how this did against the actual data.
+
+accuracy(fc_retail_ts_auto, retail_new_test)
+accuracy(fc_retail_ts_auto2, retail_new_test)
+
+actual_data <- ts(retail_new_test, start=c(2014, 1), end=c(2016, 12), frequency=12) 
+
+autoplot(actual_data, series="Actual Data") +
+  autolayer(fc_retail_ts_auto, series="ARIMA(1,0,1)(2,0,0)[12]") +
+  autolayer(fc_retail_ts_auto2, series="ARIMA(1,0,2)") +
+  ggtitle("Turnover - South Australia - Newspaper and book retailing") + 
+  ylab("$ in Millions") +
+  xlab("Year")
+```
+

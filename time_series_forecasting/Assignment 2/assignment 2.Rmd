@@ -1,0 +1,334 @@
+---
+title: "Assignment 2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```   
+
+```{r}
+library(tseries)
+library(zoo)
+library(ggplot2)
+library(forecast)
+library(expsmooth)
+library(fpp)
+library(seasonal)
+```
+
+### 1.	For this exercise, use the price of a dozen eggs in the United States from 1900-1993 (data set 'eggs' ). 
+
+#### a. Experiment with the various options in the holt() function to see how much the forecasts change with damped or exponential trend. Try changing the parameter values for ?? and ?? to see how they affect the forecasts. You should do at least 5 forecasts. (5)
+
+#### b. Try to develop an intuition of what each parameter and argument is doing to the forecasts. [Hint: use h=100 when calling holt() so you can clearly see the differences between the various options when plotting the forecasts.] How would you explain that intuition? (3)
+
+```{r}
+eggdata <- window(eggs, start = 1900, end = 1993)
+```
+
+
+```{r}
+egg1 <- holt(eggdata, alpha = 0.8, beta = .1,initial = "simple", h = 100)
+egg2 <- holt(eggdata, alpha = 0.8, beta = .2, initial = "simple", h = 100)
+egg3 <- holt(eggdata, alpha = 0.9, beta = .15, initial = "optimal", damped = TRUE, h = 100)
+egg4 <- holt(eggdata, alpha = 0.9, beta = .1, initial = "simple", h = 100)
+egg5 <- holt(eggdata, alpha = 0.9, beta = .2, initial = "optimal", exponential=TRUE, damped = TRUE, h = 100)
+```
+
+
+```{r}
+#To save space, I commented these out.
+
+#summary(egg1)
+#summary(egg2)
+#summary(egg3)
+#summary(egg4)
+#summary(egg5)
+```
+
+```{r}
+egg1 %>% forecast(h=100) %>%
+  autoplot() +
+  ylab("Price of dozen eggs (dollars)") +
+  xlab("Year")
+```
+
+```{r}
+egg2 %>% forecast(h=100) %>%
+  autoplot() +
+  ylab("Price of dozen eggs (dollars)") +
+  xlab("Year")
+```
+
+```{r}
+egg3 %>% forecast(h=100) %>%
+  autoplot() +
+  ylab("Price of dozen eggs (dollars)") +
+  xlab("Year")
+```
+
+```{r}
+egg4 %>% forecast(h=100) %>%
+  autoplot() +
+  ylab("Price of dozen eggs (dollars)") +
+  xlab("Year")
+```
+
+```{r}
+egg5 %>% forecast(h=100) %>%
+  autoplot() +
+  ylab("Price of dozen eggs (dollars)") +
+  xlab("Year")
+```
+
+#### c.	Which model gives the best RMSE? (2)
+  - egg3 with RSME of 27.49065
+
+### 2.	For this exercise, use the quarterly UK passenger vehicle production data from 1977:1-2005:1. (Data set ukcars.) 
+#### a.	Plot your data and describe the main features of the series. (2)
+   - You can definitely see seasonality, upward trend, notice the crash in 2000.
+
+```{r}
+cardata <- window(ukcars, start = 1977, end = 2005)
+autoplot(cardata, ylab = "UK passenger car production (thousands)", xlab = "Year")
+```
+
+#### b.	Decompose the series using STL and obtain the seasonally adjusted data.  (1)
+
+```{r}
+carfit <- ets(cardata)
+summary(carfit)
+```
+
+```{r}
+autoplot(carfit)
+```
+
+```{r}
+car_stl <- stl(cardata, s.window="periodic")
+autoplot(seasadj(car_stl), ylab = "Seasonally Adjusted car production (thousands)", xlab = "Year")
+```
+
+####  c.	Forecast the next two years of the series using Holt's linear trend method applied to the seasonally adjusted data. (2)
+```{r}
+holt_car <- holt(seasadj(car_stl),initial="simple",h=8)
+summary(holt_car)
+autoplot(forecast(holt_car, h = 8), ylab = "UK passenger car production (thousands)", xlab = "Year")
+```
+
+#### d.	What are the parameters of the method? What do they tell you about how quickly the slope and level are changing over time? (3)
+  - alpha = 0.7505, beta  = 0.2054   This alpha value indicates that recent values are being more heavily weighted when making the forecast, and the beta value indicates a fairly low weighted value of the trend in making the forecast 
+
+#### e.	Reseasonalize the forecasts using the following code where decomp is the output from stl() and fit is the output from holt():  (2)
+lastyear <- rep(decomp$time.series[110:113,"seasonal"],2) fc <- fit$mean + lastyear 
+
+```{r}
+lastyear <- rep(car_stl$time.series[110:113,"seasonal"],2) 
+fc <- holt_car$mean + lastyear 
+```
+
+#### f.	Do the re-seasonalized forecasts look reasonable? Why or why not? (2)
+  - This would make sense when compared to the recent data.
+```{r}
+autoplot(fc, ylab = "UK passenger car production (thousands)", xlab = "Year")
+```
+  
+#### g.	Use ets() to choose a seasonal model for the data.  How would you explain the results? (3)
+  - ETS chose ANA, which is a additive seasonal model.  This would make sense because the seasonal variations are fairly consistant throught the time series.
+  
+```{r}
+ets_car <- ets(cardata)
+summary(ets_car)
+```
+  
+#### h.	Apply both an X11 and a SEATS model using a two year horizon. 
+  
+```{r}
+car_x11 <- seas(cardata,x11="")
+x11_seas <- seasadj(car_x11)
+autoplot(car_x11)
+summary(car_x11)
+```
+
+```{r}
+ukcars_x11 <- seas(ukcars, x11="", forecast.maxlead=8)
+
+ukcars_seats <- seas(ukcars, forecast.maxlead=15)
+
+autoplot(ukcars_x11, main = "x11 Decomp UK Cars")
+autoplot(ukcars_seats, main = "SEATS Decomp UK Cars")
+```
+
+
+```{r}
+library(seasonal)
+ukcars_x11 <- seas(ukcars, x11="", forecast.maxlead=8)
+ukcars_seats <- seas(ukcars, forecast.maxlead=12)
+
+#summary(ukcars_x11)
+autoplot(ukcars_x11) + ggtitle("x11 Decomp UK Car Production")
+#summary(ukcars_seats)
+autoplot(ukcars_seats) + ggtitle("SEATS Decomp UK Car Production")
+
+x11_forecast <- series(ukcars_x11, "forecast.forecasts")
+SEATS_forecast <- series(ukcars_seats, "forecast.forecasts")
+
+
+SEATS_Cast <-subset(SEATS_forecast, end=8)
+
+
+print("Two year x11 Forecast: ")
+print(x11_forecast)
+
+print("Two year SEATS Forecast: ")
+print(SEATS_Cast)
+```
+
+  
+#### i.	Compare the RMSE of the fitted model with the RMSE of the model above. Which gives the better in-sample fits?  How would you explain that? (3)
+  
+  - The Models above appear to give a better RSME here.
+  
+#### j.	Now compare the forecasts from the above approaches? Which seems most reasonable? Why? (2)
+  - The forecasts appear to be identical.
+
+### 3.	For this exercise, use the monthly Australian short-term overseas visitors data, May 1985-April 2005. (Data set: visitors.) 
+#### a.	Make a time plot of your data and describe the main features of the series. (2)
+  - Well defined trend and obvious seasonality with a crash in 2004
+```{r}
+visitdata <- window(visitors, start = c(1985,5), end = c(2005,4))
+plot(visitdata, ylab = "Monthly Australian Visitors", xlab = "Year")
+```
+  
+  
+#### b.	Forecast the next two years using Holt-Winters' multiplicative method. Why is multiplicative seasonality necessary here?  (2)
+  - Multiplicative is needed because the seasonality is increasing over time.
+```{r}
+hmvisit1 <- hw(visitdata,seasonal="multiplicative",h=24)
+summary(hmvisit1)
+
+hmvisit1 %>% forecast(h=24) %>%
+  autoplot() +
+  ylab("Monthly Australian Visitors") +
+  xlab("Year")
+```
+
+
+#### c.	Experiment with making the trend exponential and/or damped, investigating at least two alternatives. Why did you choose the options you did? (3)
+  - I spent time tinkering with the parameters until I landed on a lower RSME.
+  
+```{r}
+hmvisit2 <- hw(visitdata,seasonal="multiplicative", initial = c("optimal"), damped = TRUE,h=24)
+summary(hmvisit2)
+
+hmvisit2 %>% forecast(h=24) %>%
+  autoplot() +
+  ylab("Monthly Australian Visitors") +
+  xlab("Year")
+```
+
+```{r}
+hmvisit3 <- holt(visitdata,initial = c("simple"), exponential = TRUE,h=24)
+summary(hmvisit3)
+
+hmvisit3 %>% forecast(h=24) %>%
+  autoplot() +
+  ylab("Monthly Australian Visitors") +
+  xlab("Year")
+```
+
+```{r}
+hmvisit4 <- holt(visitdata,exponential = TRUE,initial = c("optimal"), damped = TRUE,h=24)
+summary(hmvisit4)
+
+hmvisit4 %>% forecast(h=24) %>%
+  autoplot() +
+  ylab("Monthly Australian Visitors") +
+  xlab("Year")
+```
+
+  - hvisit2 is the best
+
+#### d.	Compare the RMSE of the one-step forecasts from the various methods. Which do you prefer?  Why? (2)
+  - I prefer the Holts-Winters model because it performs best with this type of data where the seasonality keeps increasing over time.
+  
+#### e.	Now use the ets() function to select a model automatically. Does it choose the same model you did? How would you explain that? (3)
+  - It does choose the Holts-Winters model because this appears to perform best with this time series.
+  
+```{r}
+etsvisit <- ets(visitdata)
+summary(etsvisit)
+```
+
+```{r}
+autoplot(etsvisit)
+```
+
+
+### 4.	Using the attached data Alcohol demand (log spirits consumption per head), UK, 1870-1938, perform a standard TS EDA. That includes:
+
+#### a.	Plot the raw time series and comment. 
+  
+```{r}
+workdir <- "C:/Users/ca034330/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 2"
+#workdir <- "D:/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 2"
+setwd(workdir)
+booze <- read.csv("alcohol-demand-log-spirits-consu.csv", skip=1,nrows=206, col.names = c("date","demand"), stringsAsFactors = FALSE)
+booze$date <- as.Date(as.yearmon(booze$date))
+booze$demand <- as.numeric(booze$demand)
+ts_booze <- read.zoo(booze, FUN = as.yearmon)
+autoplot.zoo(ts_booze, main = "Log Alcohol Consumption per Head UK 1870-1938") + xlab("Month and Year") + ylab("Log Alcohol Consumption")
+```
+  - There is an intense crash at about 1895 and a sharp rise at about 1987, followed by a smaller crash in 1917 and another increase at about 1932.
+
+
+#### b.	Run a decompose function. Describe. The components you see. 
+  - Up until the 1890s the trend was decreasing, and in the 10 years between 1885-1895, there was very high seasonality seasonality.  The trend then bounced back up, and gradually increased until 1910 or so, when it dipped again, stayed moderately level until about 1932, then increased sharply.  Each time there was a drastic change in the trend, the seasonality because more volitile. 
+  
+```{r}
+booze_decomp <- stl(ts_booze, s.window=7)
+autoplot(booze_decomp)
+```
+  
+#### c.	Test for normality using the Jaques-Berra test as well as a qqlot.
+  - The P value is very, very small, which indicates that the null hypothesis can be rejected and there is significant correlation in the data.  However the Q-Q Plot shows that the data is not normal and needs to be normalized.
+  
+```{r}
+jarque.bera.test(ts_booze)
+```
+
+```{r}
+qqnorm(ts_booze)
+```
+
+  
+#### d.	If not normal (ND)- transform using a Box-Cox (see the code in Week 3-4 code). 
+  
+```{r}
+(lambda <- BoxCox.lambda(ts_booze))
+bx_booze <- BoxCox(ts_booze,lambda)
+qqnorm(bx_booze)
+```
+  
+#### e.	Run and check the ACF (and comment) lag structure. 
+  
+```{r}
+ggAcf(bx_booze, lag = 24)
+```
+  
+#### f.	Run the LJUNG-BOX test for auto-correlation and 3 lags and 6 lags. Comment.
+  
+```{r}
+Box.test(bx_booze, lag = 3, type = c("Ljung-Box"))
+```
+
+```{r}
+Box.test(bx_booze, lag = 6, type = c("Ljung-Box"))
+```
+
+  - Because the chi-squared value is very large in both tests, this would mean that the data does not have a very strong relationship and the prediction here would not be reliable.  This could be due to other factors not taken into consideration (like prohibition policies).  The null hypothesis cannot be rejected here.
+  
+*For #c and #f- write out the hypothesis test you are running (null and alternative) and give a proper statistical interpretation. 
+
+  

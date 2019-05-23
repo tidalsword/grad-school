@@ -1,0 +1,379 @@
+---
+title: "Final Project"
+author: "Corey Austen"
+date: "December 15, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(warn=-1)
+```
+
+```{r library, include=FALSE}
+library(tseries)
+library(zoo)
+library(ggplot2)
+library(forecast)
+library(expsmooth)
+library(fpp2)
+library(xlsx)
+library(hts)
+library(vars)
+```
+
+```{r workdir, include=FALSE}
+workdir <- "D:/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Final Project"
+setwd(workdir)
+```
+
+#### Ch 10: 2-5
+
+#### 2. Generate 8-step-ahead bottom-up forecasts using ARIMA models for the visnights Australian domestic tourism data. Plot the coherent forecasts by level and comment on their nature. Are you satisfied with these forecasts?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Question_10_2}
+# Forecast
+nights_hts <- hts(visnights, characters = c(3, 5))
+
+fc_arima <- forecast(
+  nights_hts, h = 8, method = "bu", fmethod = "arima"
+)
+# Plot coherent forecasts by level.
+plot(fc_arima, levels = 0, color_lab = TRUE)
+title(main = "Total visitor nights")
+# Seems to have strong seasonality.
+plot(fc_arima, levels = 1, color_lab = TRUE)
+title(main = "Grouped by State")
+# On average, New South Wales had the most visitors. However, Queensland had the most visitors in the 3rd quarter.
+# The number of visitors to NSW, VIC, WAU show strong seasonality, but the numbers of WAU and Other had weaker seasonality. 
+# The level 2 coherent forecasts are equal to the base forecasts.
+plot(fc_arima, levels = 2, color_lab = TRUE)
+title(main = "Grouped by Zone in each state")
+# Queensland Metro had the most visitors overall.
+```
+
+#### 3. Model the aggregate series for Australian domestic tourism data visnights using an ARIMA model. Comment on the model. Generate and plot 8-step-ahead forecasts from the ARIMA model and compare these with the bottom-up forecasts generated in question 2 for the aggregate level.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Question_10_3}
+str(visnights)
+head(visnights)
+# aggregating visnights.
+nights_total <- rowSums(visnights)
+nights_total_ts <- ts(nights_total, 
+                         start = 1998, 
+                         frequency = 4)
+str(nights_total_ts)
+# create ARIMA model and forecast visnights.
+nights_total_auto <- auto.arima(
+  nights_total_ts
+)
+autoplot(nights_total_ts) +
+  autolayer(nights_total_auto$fitted)
+# Looks like the model doesn't fit very well to the aggregated data.
+fc_nights_total_auto <- forecast(
+  nights_total_auto, h = 8
+)
+fc_nights_total_auto$model
+# ARIMA(0, 1, 1)(0, 1, 1)[4]
+# bottom-up forecasts.
+nights_total_bu <- ts(
+  rowSums(fc_arima$bts), 
+  start = 2017, 
+  frequency = 4)
+autoplot(fc_nights_total_auto) +
+  autolayer(nights_total_bu)
+# The forecasts have a rising trend with strong seasonality. The Bottom-up forecasts didn't have any visible trend and the values overall were lower.
+```
+
+#### 4. Generate 8-step-ahead optimally reconciled coherent forecasts using ARIMA base forecasts for the visnights Australian domestic tourism data. Plot the coherent forecasts by level and comment on their nature. How and why are these different to the bottom-up forecasts generated in question 2 above.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Question_10_4}
+# To do optimally reconciled coherent forecasts, I'm going to use the Mint estimator. I need to decide (base forecast) covariance model for the estimator.
+str(visnights)
+str(smatrix(nights_hts))
+# The number of time points(T) is 76 and the number of rows(m) in S matrix is 27. T >= m. Therefore I'm going to use sample covariance.
+# forecast
+fc_arima_mint <- forecast(
+  nights_hts, h = 8,
+  method = "comb", weights = "mint", covariance = "sam",
+  fmethod = "arima"
+)
+# Plot the coherent forecasts by level.
+plot(fc_arima_mint, levels = 0, col = "red")
+par(new = TRUE, xpd = TRUE)
+plot(fc_arima, levels = 0, col = "blue")
+title(main = "Total number of visitors")
+legend("bottomright", legend = c("Optimal", "Bottom-up"), title = "Coherent forecast", col = c("red", "blue"), lty = c(1, 1), bty = "n", cex = 0.5)
+# Top level coherent forecasts show that the ORM has higher forecast values than the bottom-up method. But the values aren't bigger than the ARIMA model.
+# This happened because the top level forecasts of the ARIMA model affected the smaller optimal values while the aggregated value from bottom-level forecasts affected the larger values.
+plot(fc_arima_mint, levels = 1, color_lab = TRUE)
+plot(fc_arima, levels = 1, color_lab = TRUE)
+# Level 1 coherent forecasts show that tthe ORM yielded higher forecast values than the bottom-up method, especially at the peaks.
+# It looks like the top-level forecasts affected more than the bottom-level forecasts.
+plot(fc_arima_mint, levels = 2, color_lab = TRUE)
+plot(fc_arima, levels = 2, color_lab = TRUE)
+# For some categories, the forecasts became larger when the ORM was used. The forecasts were lower for the rest.
+# The increase and decrease varied for each category because of the affiliation differences.
+```
+
+#### 5. Using the last two years of the visnights Australian domestic tourism data as a test set, generate bottom-up, top-down and optimally reconciled forecasts for this period and compare their accuracy.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Question_10_5}
+nights_hts_train <- window(nights_hts, end=c(2014,4))
+nights_hts_test <- window(nights_hts, start=2015)
+fc_nights_ets_1 = forecast(
+  nights_hts_train, h = 8, 
+  method = "comb", weights = "wls", fmethod = "ets"
+  )
+fc_nights_ets_2 = forecast(
+  nights_hts_train, h = 8, 
+  method = "bu", fmethod = "ets"
+  )
+tab <- matrix(NA, ncol = 4, nrow = 4)
+rownames(tab) <- c("Total", "State", "Bottom", "All series")
+colnames(tab) <- c("Bottom-up MAPE", "Bottom-up MASE", "Optimal MAPE", "Optimal MASE")
+# I'll use MAPE and MASE as evaluation method.
+tab[1,] <- c(
+  accuracy.gts(
+    fc_nights_ets_2,
+    nights_hts_test,
+    levels = 0
+    )[c("MAPE","MASE"),"Total"],
+  accuracy.gts(
+    fc_nights_ets_1, 
+    nights_hts_test,
+    levels = 0
+    )[c("MAPE","MASE"),"Total"]
+  )
+j=2
+for(i in c(1:2)){
+  tab[j,] <- c(
+    mean(accuracy.gts(
+      fc_nights_ets_2,
+      nights_hts_test,
+      levels = i)["MAPE",]),
+    mean(accuracy.gts(
+      fc_nights_ets_2,
+      nights_hts_test,
+      levels = i)["MASE",]),
+    mean(accuracy.gts(
+      fc_nights_ets_1,
+      nights_hts_test,
+      levels = i)["MAPE",]),
+    mean(accuracy.gts(
+      fc_nights_ets_1,
+      nights_hts_test,
+      levels = i)["MASE",])
+  )
+  j=j+1
+}
+tab[4,] <- c(
+  mean(accuracy.gts(
+      fc_nights_ets_2,
+      nights_hts_test
+      )["MAPE",]),
+  mean(accuracy.gts(
+      fc_nights_ets_2,
+      nights_hts_test
+      )["MASE",]),
+  mean(accuracy.gts(
+      fc_nights_ets_1,
+      nights_hts_test
+      )["MAPE",]),
+  mean(accuracy.gts(
+      fc_nights_ets_1,
+      nights_hts_test
+      )["MASE",])
+)
+knitr::kable(tab, digits=2, booktabs=TRUE)
+# all evaluation results show that forecasts of the ORM were more accurate than the bottom-up forecasts.
+plot(fc_nights_ets_1, levels = 0, title = "ORM")
+plot(fc_nights_ets_2, levels = 0, title = "Bottom-Up")
+plot(nights_hts, level = 0)
+# No trend in the forecasts of the ORM and the bottom-up forecasts.
+```
+
+### Ch 11: 1-3 (+ perform a bagging and bootstrapping on the gasoline dataset).
+
+####1. Use the tbats() function to model your retail time series.
+####  a. Check the residuals and produce forecasts.
+  
+```{r warning=FALSE, Question_11_1_a}
+# a. Check the residuals and produce forecasts.
+retail <- read.xlsx("retail.xlsx",
+                    sheetIndex = 1,
+                    startRow = 2)
+retail_ts <- ts(retail[,"A3349575C"], 
+                frequency=12, 
+                start=c(1982,4))
+retail_tbats <- tbats(retail_ts)
+checkresiduals(retail_tbats)
+# The residuals aren't completely white noise, but this should work well enough.
+fc_retail_tbats <- forecast(retail_tbats, h = 36)
+autoplot(fc_retail_tbats)
+# testing accuracy using future data.
+retail_new <- read.xlsx("8501011.xlsx", 
+                        sheetName = "Data1", 
+                        startRow = 10)
+retail_new_ts <- ts(retail_new[, "A3349575C"],
+                    start = c(1982, 4),
+                    frequency = 12)
+retail_new_test <- subset(
+  retail_new_ts,
+  start = length(retail_ts) + 1
+  )
+accuracy(fc_retail_tbats, retail_new_test)
+# TBATS looks like it did really well here.
+```
+  
+  
+####  b. Does this completely automated approach work for these data?
+
+Based on the forecasts shown in the plot above, it looked like that TBATS model worked for these data well.
+
+```{rwarning=FALSE, Question_11_1_b}
+# Based on the forecasts shown in the plot above, it looked like that TBATS model worked for these data well.
+```
+  
+  
+####  c. Have you saved any degrees of freedom by using Fourier terms rather than seasonal differencing?
+  
+```{r warning=FALSE, Question_11_1_c}
+retail_tbats
+# The model I used when using the Fourier terms was ARIMA(1,0,1)(2,0,0)[12], which has 16 degrees of freedom.  The model here has 15 degrees of freedom, so I did save 1 degree. 
+```
+  
+  
+#### 2. Consider the weekly data on US finished motor gasoline products supplied (millions of barrels per day) (series gasoline):
+####  a. Fit a TBATS, a bagging, and a bootstrapping model to these data.
+  
+```{r warning=FALSE, Question_11_2_a}
+
+
+gas_tbats <- tbats(gasoline, use.parallel = FALSE)
+
+#ETS doesn't like the high frequency and seasonality in the dataset, so we are using an auto arima for the bootstrapping instead.
+
+#Creating the fourier series matrix.
+gas_fourier <- fourier(gasoline, K = 13)
+
+#Time to create that bagged model! (This take a while)
+gas_bagged <- baggedModel(gasoline, bootstrapped_series = bld.mbb.bootstrap(gasoline, 10), fn = c("auto.arima"), xreg = gas_fourier)
+```
+
+
+```{r warning=FALSE, bootstrap}
+nsim <- 10L
+sim <- bld.mbb.bootstrap(gasoline, nsim)
+
+h <- 36L
+future <- matrix(0, nrow=nsim, ncol=h)
+for(i in seq(nsim))
+  future[i,] <- simulate(Arima(sim[[i]]), nsim=h)
+
+start <- tsp(gasoline)[2]+1/52
+simfc <- structure(list(
+    mean = ts(colMeans(future), start=start, frequency=52),
+    lower = ts(apply(future, 2, quantile, prob=0.025),
+               start=start, frequency=52),
+    upper = ts(apply(future, 2, quantile, prob=0.975),
+               start=start, frequency=52),
+    level=95),
+  class="forecast")
+
+bootseries <- bld.mbb.bootstrap(gasoline, 10) %>%
+  as.data.frame %>% 
+  ts(start=1991, frequency=52)
+
+gas_bootstrap <- purrr::map(as.list(bootseries),
+           function(x){forecast(stlf(x))[["mean"]]}) %>%
+      as.data.frame() %>%
+      ts(frequency=52, start=start)
+```  
+  
+####  b. Check the residuals and produce forecasts.
+  
+  TBATS doesn't work well for the gasoline dataset.  The model automatically searches for the best fit based on Box-Cox and with or without a damped trend.  The bootstrapping and boosting models also didn't perform well, but I am sure it is because of my parameters being wrong.  I attempted to use a Fourier matrix change to adjust the gasoline data for the auto arima model in the bootstrapping, but the data would not fit properly.
+  
+  
+```{r warning=FALSE, Question_11_2_b}
+checkresiduals(gas_tbats)
+checkresiduals(gas_bagged)
+# The residuals aren't like white noise.
+fc_gas_tbats <- forecast(gas_tbats,h = 52)
+fc_gas_bootstrap <- forecast(gas_bootstrap,h = 52)
+fc_gas_bagged <- forecast(gas_bagged,h = 52,xreg = gas_fourier)
+# It looks like none of these models fitted well.
+
+autoplot(gasoline) +
+  ggtitle("TBATS and Bagging Forecasts - Gasoline") +
+  autolayer(fc_gas_tbats, series="TBATS", PI=FALSE) +
+  autolayer(fc_gas_bagged, series="Bagging", PI=FALSE) +
+  ylab("million barrels per day") + 
+  scale_x_continuous(limits = c(2010, 2019)) +
+  guides(colour=guide_legend(title="Forecasts"))
+
+autoplot(gasoline) +
+  ggtitle("Bootstrapping - Gasoline") +
+  autolayer(gas_bootstrap, series="Bagging", PI=FALSE) +
+  scale_x_continuous(limits = c(2010, 2019)) +
+  ylab("million barrels per day") + 
+  theme(legend.position="none")
+
+```
+
+
+####  c. Could you model these data using any of the other methods we have considered in this book?
+  
+A dynamic regression model is probably the best for the data. Regression can deal with the trends in the data, and ARIMA model can be fitted for the residuals pretty well.
+
+#### 3. Experiment with using nnetar() on your retail data and other data we have considered in previous chapters.
+
+```{r warning=FALSE, Question_11_3}
+
+retail_nnetar <- nnetar(
+  retail_ts, lambda = BoxCox.lambda(retail_ts)
+  )
+fc_retail_nnetar <- forecast(retail_nnetar, h = 36)
+autoplot(fc_retail_nnetar)
+# test accuracy using future data.
+accuracy(fc_retail_nnetar, retail_new_test)
+# It is better than all methods I tried so far, including Holt-Winters'.
+# experiment with usmelec data.
+usmelec_nnetar <- nnetar(
+  usmelec, lambda = BoxCox.lambda(usmelec)
+  )
+fc_usmelec_nnetar <- forecast(
+  usmelec_nnetar, h = 12*4
+)
+autoplot(fc_usmelec_nnetar)
+# Using the latest data to see how well it did
+usmelec_new <- read.csv("MER_T07_02A.csv", sep = ",")
+usmelec_new[, "Year"] <- as.numeric(substr(usmelec_new[, "YYYYMM"], 1, 4))
+usmelec_new[, "Month"] <- as.numeric(
+  substr(usmelec_new[, "YYYYMM"], 5, 6)
+  )
+usmelec_new <- subset(
+  usmelec_new, 
+  Description == "Electricity Net Generation Total, All Sectors", 
+  select = c("Year", "Month", "Value")
+  )
+usmelec_new <- subset(usmelec_new, Month != 13)
+usmelec_new[, "Value"] <- as.numeric(
+  as.character(usmelec_new[, "Value"])
+  )/1000
+usmelec_new_ts <- ts(
+  as.numeric(usmelec_new[, "Value"]), 
+  start = c(1973, 1), 
+  frequency = 12
+  )
+# get accuracy
+accuracy(fc_usmelec_nnetar, usmelec_new_ts)
+# Without ME and MPE, all the other errors show that the neural network model is better than the ARIMA model for forecasting the usmelec data, based on the results I got in Assignment 4.
+autoplot(fc_usmelec_nnetar) +
+  autolayer(window(usmelec_new_ts, start = c(2013, 7))) +
+  scale_x_continuous(limits = c(2010, 2019)) +
+  scale_y_continuous(limits = c(250, 450))
+# The neural net model fits well to this data set, however the RSME is a bit higher than I would ha liked
+```

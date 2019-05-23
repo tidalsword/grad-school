@@ -1,0 +1,249 @@
+---
+title: "Corey Austen Assignment 1"
+output: html_notebook
+---
+
+#Problem 1: 
+Consider the weekly spot prices for crude oil (dollars per gallon) from January 2004 to January 2016. The data file is crudeoil_w0416.csv and contains dates (date) and prices (price). Note that the data are separated by commas. Use the zoo package as well as fbasics package (see week 1 zoo code example).
+
+##a)
+Create a time plot for the time series of spot prices. Make sure the plot is correctly labeled and titled. Analyze the time trend displayed by the plot, and discuss if data show any striking pattern, such as upward/downward trends or seasonality? 
+
+##Answer:
+
+The spot price as shown in the time series plot does appear to show trend, seasonality, and may be cyclical.  You can see the trend year over year from 2004 to 2008, then there is a sharp decline in the middle of 2008.  The prices then appear to trend upward again, from mid-2009 to mid-2014, then there is a sharp decline again.  You can also see the seasonality of the price as well, with the prices dropping just before summer, rising through the summer, then falling again as the year ends.  I would also argue that there is a cycle to the prices as well, as we see the crash in the price in mid-2008 and again in mid-2014.  Perhaps the most striking thing in the graph is the price shaply declining in 2008 as a result of the resession.
+
+
+```{r}
+library(tseries)
+library(zoo)
+library(ggplot2)
+library(ggfortify)
+#import crude oil dataset into a dataframe
+work_dir <- "C:/Users/Corey/Documents/GitHub/time_series/Week 1/Data"
+setwd(work_dir)
+crude = read.table('crudeoil_w0416.csv', header=T, sep=',')
+# create time series for oil prices
+```
+```{r}
+#examining the newly created dataframe
+str(crude)
+class(crude)
+summary(crude)
+```
+
+```{r}
+#Creating a TS object with the crude data
+crudets = zoo(crude$price, as.Date(as.character(crude$date), format = "%e-%b-%y"))
+#Taking a look at the newly created object
+head(time(crudets))
+start(crudets)
+end(crudets)
+```
+
+```{r}
+# sort data in chronological order
+# set variable Date as time/date variable
+crude$date=as.Date(as.character(crude$date), format = "%e-%b-%y")
+crude=crude[order(crude$date),]
+```
+
+
+```{r}
+autoplot(crudets) + labs(title="Crude Oil Prices", y="Price per Barrel ($)") + scale_x_date(date_breaks = "1 year", date_minor_breaks = "1 year", date_labels = "%Y") + theme(axis.text.x = element_text(angle = 90, vjust=0.5), panel.grid.minor = element_blank())
+```
+
+##b) 
+Compute the percentage change rate of spot prices using the formula  rate = (pt - pt-1) /pt-1, where pt is the oil price . Plot the percent change. Describe what you see. 
+
+##Answer:
+You can see the drastic change in 2008 and again in 2014, but the percent of change appears to have a consistant range for the rest of the time, typically between -5% and +10%.
+
+```{r}
+#Calculating the rate of change in spot price
+pricelag = lag(crudets,k=-1);
+rate =((crudets-pricelag)/pricelag)*100
+summary(rate)
+```
+
+```{r}
+#Plotting the rate of change in spot price
+autoplot(rate) + labs(title="Crude Oil Prices", y="Rate of Change in Price (%)") + scale_x_date(date_breaks = "1 year", date_minor_breaks = "1 year", date_labels = "%Y") + theme(axis.text.x = element_text(angle = 90, vjust=1.5), panel.grid.minor = element_blank())
+```
+
+
+##c) 
+Analyze the distribution of rate using a histogram and a normal quantile plot. Is the distribution of rate symmetric? Is it close to a normal distribution? 
+
+#Answer:
+In much the same way as we can see in the graphed rate of change, the majority of the rate from week to week is between +5% and -5% and it does appear to be almost symmetrical, with a bit more on the falling on the + side. This is close to a normal distribution, as seen in the quantile plot.
+
+```{r}
+library(fBasics)
+                     
+# COMPUTE SUMMARY STATISTICS
+basicStats(rate) 
+           
+# Creating a histogram of the rate of change in price
+hist(rate, xlab="Price Rate Change", prob=TRUE, main="Histogram") 
+# add approximating normal density curve 
+xfit<-seq(min(rate),max(rate),length=40) 
+yfit<-dnorm(xfit,mean=mean(rate),sd=sd(rate)) 
+lines(xfit, yfit, col="blue", lwd=2) 
+```
+```{r}
+#creating the Q-Q plot of the rate of change
+qqnorm(rate) 
+qqline(rate, col = 2) 
+```
+
+
+##d) 
+Create and plot the log value of the spot price. Reflect on your findings. 
+
+#Answer:
+Again, we see that the largest variation takes place when the price of crude oil crashes.
+
+```{r}    
+#Defining the log value of the spot price
+crudelog = diff(log(crudets))
+summary(crudelog)
+```
+
+```{r}
+#plotting the log of the spot price
+plot(crudelog)
+```
+
+
+#Problem 2:
+Hyndman, Chapter 2, problem 3 (uses the ts object)
+
+Download some monthly Australian retail data from the book website. These represent retail sales in various categories for different Australian states, and are stored in a MS-Excel file.
+
+You can read the data into R with the following script:
+
+```{r}
+work_dir <- "D:/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 1"
+setwd(work_dir)
+retaildata <- readxl::read_excel("retail.xlsx", skip=1)
+```
+
+The second argument (skip=1) is required because the Excel sheet has two header rows.
+Select one of the time series as follows (but replace the column name with your own chosen column):
+
+```{r}
+myts <- ts(retaildata[,"A3349575C"],
+  frequency=12, start=c(1982,4))
+```
+
+Explore your chosen retail time series using the following functions:
+
+```{r}
+library(ggfortify)
+autoplot(myts) + labs(title="Seasonal plot: Turnover;  South Australia;  Newspaper and book retailing;",x="Year", y="Retail Sales") + theme(axis.text.x = element_text(angle = 90, vjust=0.5), panel.grid.minor = element_blank())
+```
+
+```{r}
+library(forecast)
+ggseasonplot(myts, polar=TRUE) +
+ylab("Retail Sales") +
+ggtitle("Seasonal plot: Turnover;  South Australia;  Newspaper and book retailing;")
+
+```
+
+```{r}
+ggsubseriesplot(myts) + ylab("Retail Sales") +
+ggtitle("Subseries plot: Turnover;  South Australia;  Newspaper and book retailing;")
+```
+
+```{r}
+myts2005 <- window(myts, start=2005)
+gglagplot(myts2005, lags = 9)
+```
+
+```{r}
+ggAcf(myts, lag = 48)
+```
+
+#Can you spot any seasonality, cyclicity and trend? What do you learn about the series?
+
+##Answer
+YOu can see the seasonalit, cyclicity, and the trend in the data. I learned that the sales have been trending upward, and the sales tend to increase in December and somewhat in July.
+
+#Problem 3: 
+Using the Lubridate package, complete the tutorial questions at this link. See week 1- lubridate example code. 
+
+https://www.r-bloggers.com/dates-and-times-simple-and-easy-with-lubridate-exercises-part-1/
+
+The ymd() series of functions are used to parse character strings into dates.
+The letters y, m, and d correspond to the year, month, and day elements of a date-time.
+
+##Exercise 1
+Populate a variable called "start_date" with a date representation of string "23012017"
+```{r}
+library(lubridate)
+start_date <- dmy(23012017)
+start_date
+```
+
+##Exercise 2
+Use the lubridate function today to print the current date
+```{r}
+today()
+```
+
+##Exercise 3
+Extract the year part from the "start_date" variable created on exercise 1
+```{r}
+year(start_date)
+```
+
+##Exercise 4
+Extract the month part from the "start_date" variable created on exercise 1
+```{r}
+month(start_date)
+```
+
+##Exercise 5
+Extract the day part from the "start_date" variable created on exercise 1
+```{r}
+day(start_date)
+```
+
+##Exercise 6
+Set the month in variable "start_date" to February
+```{r}
+start_date <- update(start_date,month=2)
+start_date
+```
+
+##Exercise 7
+Add 6 days to variable "start_date".
+Did you notice what happened to the month value?
+```{r}
+start_date <- start_date + days(6)
+start_date
+```
+
+##Exercise 8
+Substract 3 months from variable "start_date"
+```{r}
+start_date <- start_date - months(3)
+start_date
+```
+
+##Exercise 9 (Advanced) 
+Populate a field called concatenated_dates with a vector of dates containing the following values:
+"31.12.2015", "01.01.2016", "15.02.2016"
+```{r}
+concatenated_dates <- dmy(c("31.12.2015", "01.01.2016",  "15.02.2016"))
+concatenated_dates
+```
+
+#Exercise 10 (Advanced) 
+Calculate in a short and simple way the addition of 1 thru 10 days to "start_date" variable
+```{r}
+start_date + c(1:10) * days(1)
+```
+

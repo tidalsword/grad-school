@@ -1,0 +1,325 @@
+---
+title: "Assignment 3 - Corey Austen"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```   
+
+```{r}
+library(tseries)
+library(zoo)
+library(ggplot2)
+library(forecast)
+library(expsmooth)
+library(fpp)
+```
+
+
+### Ch 8, Exercises 7, 9, 10, 11 
+
+#### 7. Consider 'wmurders', the number of women murdered each year (per 100,000 standard population) in the United States.
+  
+#### a. By studying appropriate graphs of the series in R, find an appropriate ARIMA( p,d,q ) model for these data.
+
+```{r}
+autoplot(wmurders)
+```
+
+```{r}
+wmurders %>% ggtsdisplay()
+```
+
+```{r}
+wmurders %>% diff() %>% ggtsdisplay()
+```
+
+```{r}
+wmurders %>% diff() %>% diff() %>% ggtsdisplay()
+```
+
+#### b. Should you include a constant in the model? Explain.
+Since the model will need to be twice differenced, this would create trend, which would make the data non-stationary.
+
+#### c. Write this model in terms of the backshift operator.
+
+#### (1 - B)^2*yt = (1 + theta1*B + theta2*B^2)*et
+
+#### d. Fit the model using R and examine the residuals. Is the model satisfactory?
+
+  wm_model_1 appears satisfactory.
+
+```{r}
+wm_model_1 <- Arima(wmurders,order=c(0,2,2))
+summary(wm_model_1)
+checkresiduals(wm_model_1)
+```
+
+#### e. Forecast three times ahead.
+
+```{r}
+wm_model_1 %>% forecast(h=3) %>% summary()
+```
+
+#### f. Create a plot of the series with forecasts and prediction intervals for the next three periods shown.
+
+```{r}
+wm_model_1 %>% forecast(h=3) %>% autoplot
+```
+
+#### g. Does 'auto.arima()' give the same model you have chosen? If not, which model do you think is better?
+
+  The auto arima produced the better model, with a slightly lower AIC and RSME.
+
+```{r}
+wm_model_auto <- auto.arima(wmurders)
+summary(wm_model_auto)
+checkresiduals(wm_model_auto)
+```
+
+```{r}
+wm_model_auto %>% forecast(h=3) %>% autoplot
+```
+
+#### 9. For the 'usgdp' series:
+
+#### a. if necessary, find a suitable Box-Cox transformation for the data; 
+
+```{r}
+autoplot(usgdp)
+lambda_gdp <- BoxCox.lambda(usgdp)
+usgdp %>% BoxCox(lambda_gdp) %>% autoplot()
+```
+
+#### b. fit a suitable ARIMA model to the transformed data using 'auto.arima()';
+
+```{r}
+auto_fit1 <- auto.arima(usgdp, lambda=lambda_gdp)
+summary(auto_fit1)
+checkresiduals(auto_fit1)
+```
+
+```{r}
+auto_fit2 <- auto.arima(usgdp, lambda=lambda_gdp, stepwise = FALSE, approximation = FALSE)
+summary(auto_fit2)
+checkresiduals(auto_fit2)
+```
+
+#### c. try some other plausible models by experimenting with the orders chosen;
+
+```{r}
+arima_fit1 <- Arima(usgdp,order=c(1,1,0), lambda=lambda_gdp)
+summary(arima_fit1)
+checkresiduals(arima_fit1)
+```
+
+```{r}
+arima_fit2 <- Arima(usgdp,order=c(1,2,2), lambda=lambda_gdp)
+summary(arima_fit2)
+checkresiduals(arima_fit2)
+```
+
+#### d. choose what you think is the best model and check the residual diagnostics;
+
+  Based on the models I've run, it looks like the auto_fit1 model is the best on: ARIMA(2,1,0) with drift
+
+#### e. produce forecasts of your fitted model. Do the forecasts look reasonable?
+
+```{r}
+auto_fc <- forecast(auto_fit1)
+auto_fc %>% autoplot
+summary(auto_fc)
+```
+
+#### f. compare the results with what you would obtain using 'ets()' (with no transformation).
+
+  Looks like the ARIMA model performed better, as the RMSE and AIC are both lower.
+
+```{r}
+ets_gdp <- ets(usgdp)
+ets_fc <- forecast(ets_gdp)
+ets_fc %>% autoplot()
+summary(ets_fc)
+```
+
+#### 10. Consider 'austourists', the quarterly number of international tourists to Australia for the period 1999-2010.
+  
+#### a. Describe the time plot.
+
+```{r}
+austourists %>% autoplot()
+austourists %>% ggtsdisplay()
+```
+
+#### b. What can you learn from the ACF graph?
+
+  The data is non-stationary because there is a trend, which is indicated by the slow decrease in the spikes at 4, 8, 12, etc.  This likely indicates seasonality. The first spike is over the threshold, and 2 is barely under, so it could be an MA 1 just an AR model.
+ 
+#### c. What can you learn from the PACF graph? 
+
+  There is one spike, then they fall under the threshold until .  This may indicate an AR(1) model.
+  
+#### d. Produce plots of the seasonally differenced data (1 - B^4)Yt. What model do these graphs suggest?  
+
+  This appears to suggest an ARIMA(1, 1, 0)(1, 1, 0)[4].
+
+```{r}
+adj_tour <- austourists %>% diff(lag=4)
+ggtsdisplay(adj_tour)
+```
+
+```{r}
+arima_tour <- arima(austourists,order = c(1, 1, 0),seasonal = c(1, 1, 0))
+summary(arima_tour)
+checkresiduals(arima_tour)
+```
+
+#### e. Does 'auto.arima()' give the same model that you chose? If not, which model do you think is better?
+
+  The Auto Arima did not give me the same model, the Auto Arima chose ARIMA(1,0,0)(1,1,0)[4] with drift.  The Auto Arima is better, based on the AIC and the RSME. 
+ 
+```{r}
+auto_tour <- auto.arima(austourists)
+summary(auto_tour)
+checkresiduals(auto_tour)
+```
+
+#### f. Write the model in terms of the backshift operator, then without using the backshift operator.
+
+ (1 - B4)Yt=BY(t - 1)+et
+
+ (1 - phi1*B - phis1*B + phi1*phis1*B^2 - B^4 + phi1*B^5 + phis1*B^5 - phi1*phis1*B^6)(yt - c*t) = et
+
+#### 11. Consider 'usmelec', the total net generation of electricity (in billion kilowatt hours) by the U.S. electric industry (monthly for the period January 1973 - June 2013). In general there are two peaks per year: in mid-summer and mid-winter.
+
+#### a. Examine the 12-month moving average of this series to see what kind of trend is involved.
+
+```{r}
+meanelec  <- rollmean(usmelec,12)
+plot(usmelec, col='gray', main="Monthly total net generation of electricity",
+     ylab="Electricity (in billion kWh)")
+lines(meanelec)
+```
+
+#### b. Do the data need transforming? If so, find a suitable transformation.
+
+  Yes, as the variance appears to be increasing over time.
+ 
+```{r}
+lambda_elec <- BoxCox.lambda(usmelec)
+```
+
+#### c. Are the data stationary? If not, find an appropriate differencing which yields stationary data.
+
+  The data is not stationary, so we need to difference it.  Based on this, the data should probably be seasonally differenced, and potentially first difference it.
+
+```{r}
+usmelec %>% ggtsdisplay()
+```
+
+#### d. Identify a couple of ARIMA models that might be useful in describing the time series. Which of your models is the best according to their AIC values?
+
+  Based on the AIC value, the best model seems to be ARIMA(0, 1, 2)(0, 1, 1)[12] with Box-Cox transformation.
+
+```{r}
+usmelec %>% BoxCox(lambda_elec) %>% diff(lag=12)  %>% ggtsdisplay(main="Seasonal Difference")
+usmelec %>% BoxCox(lambda_elec) %>% diff(lag=12)  %>% diff(lag=1) %>% ggtsdisplay(main="w/ First Difference")
+```
+
+```{r}
+usmelec_arima1 <- Arima(usmelec,order = c(0, 1, 2),seasonal = c(0, 1, 1),lambda = lambda_elec)
+summary(usmelec_arima1)
+checkresiduals(usmelec_arima1)
+```
+
+```{r}
+usmelec_arima2 <- Arima(usmelec,order = c(0, 2, 1),seasonal = c(0, 1, 1),lambda = lambda_elec)
+summary(usmelec_arima2)
+checkresiduals(usmelec_arima2)
+```
+
+  Found a pretty nice grid searching function, but it looks like usmelec_arima1 still performs the best.
+
+```{r}
+test.arima <- function(t.series, params){
+  order <- as.numeric(params[1:3])
+  seasonal <- as.numeric(params[4:6])
+  df <- data.frame(model=paste0("ARIMA(", 
+                                paste0(params, collapse=","), 
+                                ")"),
+                   AIC=Arima(t.series, 
+                              order=order, 
+                              seasonal=seasonal,
+                              lambda=lambda_elec)$aic)
+  return(df)
+}
+gridSearch <- expand.grid(c(0, 1, 2), #p
+                          c(2), #d
+                          c(0, 1), #q
+                          c(1, 2), #P
+                          c(1), #D
+                          c(0, 1)  #Q
+                          )
+df.list <- apply(gridSearch, MARGIN=1, FUN=function(x) {test.arima(usmelec, x)})
+df <- do.call(rbind, df.list)
+df
+```
+
+```{r}
+usmelec_arima3 <- Arima(usmelec,order = c(2, 2, 1),seasonal = c(2, 1, 1),lambda = lambda_elec)
+summary(usmelec_arima3)
+checkresiduals(usmelec_arima3)
+```
+
+#### e. Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.
+
+  The Ljung-Box test suggests that the residuals are not white noise, after tuning the Arima models, the best model I could find is a still the ARIMA(0, 1, 2)(0, 1, 1)[12] with Box-Cox transformation.
+
+```{r}
+usmelec_arima1
+checkresiduals(usmelec_arima1)
+usmelec_autoarima <- auto.arima(usmelec,lambda = lambda_elec)
+usmelec_autoarima
+checkresiduals(usmelec_autoarima)
+```
+
+####  f. Forecast the next 15 years of electricity generation by the U.S. electric industry. Get the latest figures from the EIA to check the accuracy of your forecasts.
+
+```{r}
+fc_usmelec <- forecast(usmelec_arima1,h = 12*15)
+# Get the latest data.
+workdir <- "C:/Users/ca034330/Google Drive/Corey - School/!Fall 2018 B/BIA 6315 - Time Series and Forecasting/Assignment 3"
+setwd(workdir)
+usmelec_new <- read.csv("MER_T07_02A.csv", sep = ",")
+# need to do data cleaning.
+# Create columns Year, Month using YYYYMM column.
+usmelec_new[, "Year"] <- as.numeric(substr(usmelec_new[, "YYYYMM"], 1, 4))
+usmelec_new[, "Month"] <- as.numeric(substr(usmelec_new[, "YYYYMM"], 5, 6))
+# usmelec_new only have Year, Month and Value columns with net generation total.
+usmelec_new <- subset(usmelec_new, Description == "Electricity Net Generation Total, All Sectors", select = c("Year", "Month", "Value"))
+# remove unneeded data.
+usmelec_new <- subset(usmelec_new, Month != 13)
+# recalculate the value to billions.
+usmelec_new[, "Value"] <- as.numeric(as.character(usmelec_new[, "Value"]))/1000
+# first observation was taken in January, 1973. Final observation was taken in October, 2017.
+# make ts time series using usmelec_new Value column data.
+usmelec_new_ts <- ts(usmelec_new[, "Value"], start = c(1973, 1), frequency = 12)
+tail(usmelec_new_ts)
+# final observation was taken in October, 2017. 
+# compare predictions to 4 years of real data.
+usmelec_4years <- subset(usmelec_new_ts, start = length(usmelec) + 1,end = length(usmelec) + 12*4)
+accuracy(fc_usmelec, usmelec_4years)
+# plot the results
+autoplot(fc_usmelec, series = "Forecasts") + autolayer(usmelec_4years, series = "Actual data") + scale_x_continuous(limits = c(2010, 2030)) + ggtitle("Forecast from ARIMA(0,1,2)(0,1,1)[12] with Actual data")
+```
+
+####  g. Eventually, the prediction intervals are so wide that the forecasts are not particularly useful. How many years of forecasts do you think are sufficiently accurate to be usable?
+
+  The predictions seem to hold fairly well for 4-5 years out, but I would say that after 10 years, the predictions are likely to have wandered too far off to be reliable.
+
+
