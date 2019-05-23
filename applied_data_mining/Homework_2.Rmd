@@ -1,0 +1,247 @@
+---
+title: "Austen_HW_2_Corrected"
+author: "Corey Austen"
+date: "December 5, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+
+```{r setup, include=FALSE}
+library(readr)
+library(knitr)
+library(cluster)
+library(fpc)
+library(klaR)
+library(clustMixType)
+library(tidyverse)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load the Data that was cleaned in Excel
+```{r cleaned age}
+
+## Find the mean of the missing ages
+
+# The first thing I did was the mean ages of several different groups.  I wasn't sure how to do this in R, so I used Excel to fill them in. I filtered the data in Excel by drivers (all of which had a mean age of 43) and non-drivers, then filtered those into seperate groups of male(30), female(34), and other(49), and pasted the age into the blank cells. Then I saved the data as crash.csv)
+
+crash <- read_csv("C:/Users/ca034330/Google Drive/Corey - School/Fall 2017 B/BIA 6301 - Applied Data Mining/HW_2/data/crash.csv")
+```
+
+## Change Full State Names to Abbreviations
+```{r state names}
+# This doesn't really have to be done, I just thought it looked nicer and wanted to see if I could do it.
+crash$State <- state.abb[match(crash$State,state.name)]
+crash$State <- ifelse(is.na(crash$State), 'DC', crash$State)
+```
+
+## Create Regions
+
+```{r Regions}
+#I created a new column for Region, as they are described in the homework prompt.  Several states were not specified in the prompt, so I put in that any state that I did not assign was labeled "Other."
+crash$Region<-ifelse(crash$State=="AZ"|
+                            crash$State=="CO"|crash$State=="ID"|crash$State=="NM"|
+                            crash$State=="UT"|crash$State=="WY"|
+                            crash$State=="AK"|crash$State=="CA"|crash$State=="HI"|
+                            crash$State=="OR"|crash$State=="WA","West",
+              ifelse(crash$State=="CT"|crash$State=="MA"|crash$State=="NH"|
+                            crash$State=="RI"|crash$State=="VT","Northeast",
+              ifelse(crash$State=="IL"|crash$State=="IN"|crash$State=="MI"|
+                            crash$State=="OH"|crash$State=="WI"|crash$State=="IA"|
+                            crash$State=="KS"|crash$State=="MN"|crash$State=="MO"|
+                            crash$State=="NE"|crash$State=="ND"|crash$State=="SD","Midwest",
+              ifelse(crash$State=="DE"|crash$State=="FL"|crash$State=="GA"|
+                            crash$State=="MD"|crash$State=="NC"|crash$State=="SC"|
+                            crash$State=="VA"|crash$State=="DC"|crash$State=="WV","South","Other"))))
+crash <- crash[,c(17,1:16)] #Move the Region column to the front.
+```
+
+## Remove extra date information
+```{r remove dates}
+crash <- crash[,-c(14:17)]
+```
+
+## Fill in Unknown Race
+
+```{r Accident ID}
+#All other races is no more specific than unknown, we they can be combined.
+crash$Race <- ifelse(is.na(crash$Race), 'Unknown', crash$Race)
+crash$Race <- ifelse(crash$Race=="All other races"|crash$Race=="\\N", "Unknown", crash$Race)
+
+```
+## Fill in Unknown Drug Use
+
+```{r Drug ID}
+#Not Reported and unknown are two ways of saying the same thing, so they can be combined.
+crash$'Drug Involvement' <- ifelse(is.na(crash$'Drug Involvement'), 'Unknown', crash$'Drug Involvement')
+crash$'Drug Involvement' <- ifelse(crash$'Drug Involvement'=="Not Reported"|crash$'Drug Involvement'=="\\N", "Unknown", crash$'Drug Involvement')
+crash$'Drug Involvement' <- as.factor(crash$'Drug Involvement')
+```
+
+## Clean Person Type
+```{r Person Type}
+#Consolidated the data down to 4 types: Driver, Occupant, Cyclist.other, and Pedestrian.  Cyclist.other incorporates what I assume is street riding bicyclists or skateboards.
+crash$'Person Type' <- as.vector(crash$'Person Type')
+
+crash$'Person Type' <- ifelse(crash$'Person Type'=="Driver of a Motor Vehicle In-Transport", "Driver", crash$'Person Type')
+
+crash$'Person Type' <- ifelse(crash$'Person Type'=="Passenger of a Motor Vehicle In-Transport" | crash$'Person Type'=="Occupant of a Motor Vehicle In-Transport" | crash$'Person Type'=="Unknown Occupant Type in a Motor Vehicle In-Transport", "Occupant", crash$'Person Type')
+
+crash$'Person Type' <- ifelse(crash$'Person Type'=="Bicyclist" | crash$'Person Type'=="Persons on Personal Conveyances" | crash$'Person Type'=="Occupant of a Non-Motor Vehicle Transport Device", "Cyclist.Other", crash$'Person Type')
+
+crash$'Person Type' <- ifelse(crash$'Person Type'=="Pedestrian" | crash$'Person Type'=="Persons In/On Buildings", "Pedestrian", crash$'Person Type')
+
+```
+
+##Consolidate Weather Conditions
+```{r weather}
+crash$'Atmospheric Condition' <- as.vector(crash$'Atmospheric Condition')
+
+crash$'Atmospheric Condition' <- ifelse(crash$'Atmospheric Condition'=="Clear" | crash$'Atmospheric Condition'=="Cloudy", "Non-Hazardous", crash$'Atmospheric Condition')
+
+crash$'Atmospheric Condition' <- ifelse(crash$'Atmospheric Condition'=="Rain" | crash$'Atmospheric Condition'=="Severe Crosswinds" | crash$'Atmospheric Condition'=="Sleet, Hail (Freezing Rain or Drizzle)" | crash$'Atmospheric Condition'=="Snow" | crash$'Atmospheric Condition'=="Fog, Smog, Smoke" |  crash$'Atmospheric Condition'=="Blowing Sand, Soil, Dirt" |  crash$'Atmospheric Condition'=="Blowing Snow" , "Hazardous", crash$'Atmospheric Condition')
+
+crash$'Atmospheric Condition' <- ifelse(crash$'Atmospheric Condition'=="Other" | crash$'Atmospheric Condition'=="Not Reported", "Unknown", crash$'Atmospheric Condition')
+```
+
+## Seperate Roadway
+
+```{r Road Conditions}
+# There is obviously a subtype for "Roadway" in this string, so we can seperate it out.
+crash$Roadway <- ifelse(crash$Roadway=="\\N"|crash$Roadway=="Unknown", "Unknown-Unknown", crash$Roadway)
+crash <- crash %>% separate(Roadway, c("Roadway.1", "Roadway.2"), sep ="-", extra = "merge")
+```
+
+
+## Fill in empty Alcohol Data
+```{r missing alcohol}
+#Replacing empty values with NA.
+crash$'Alcohol Results' <- ifelse(is.na(crash$"Alcohol Results"),"NA", crash$"Alcohol Results")
+```
+
+## Consolidate Gender
+```{r unknown gender}
+crash$Gender <- ifelse(crash$Gender=="Not Reported", "Unknown", crash$Gender)
+```
+
+##Convert all categorical variables to factors
+```{r factors}
+crash.preprocess <- as.data.frame(crash)
+crash.preprocess$'Drug Involvement' <- as.factor(crash$'Drug Involvement')
+crash.preprocess$'Person Type' <- as.factor(crash$'Person Type')
+crash.preprocess$Roadway.1 <- as.factor(crash$Roadway.1)
+crash.preprocess$Roadway.2 <- as.factor(crash$Roadway.2)
+crash.preprocess$Gender <- as.factor(crash$Gender)
+crash.preprocess$'Atmospheric Condition' <- as.factor(crash$'Atmospheric Condition')
+crash.preprocess$State <- as.factor(crash$State)
+crash.preprocess$'Crash Date' <- as.factor(crash$'Crash Date')
+crash.preprocess$Race <- as.factor(crash$Race)
+crash.preprocess$'Alcohol Results' <- as.factor(crash.preprocess$'Alcohol Results')
+crash.preprocess$'Injury Severity' <- recode_factor(crash.preprocess$'Injury Severity', 'K' = "Fatal Injury (K)", 'A' = "Incapacitating Injury (A)", 'B' = "Non-incapacitating Evident Injury (B)", 'C' = "Possible Injury (C)", 'O' = "No Injury (O)", 'U' = "Injured, Severity Unknown", 'NA' = "Unknown")
+
+```
+
+##Add in a flag for drunk drivers so that we can sort by them, but not add in another factor for the model
+```{r drunk driver}
+
+#Since the legal limit for alcohol is 0.08 BAC, we can create a tag that indicates whether the driver was intoxicated during the crash.
+crash$'Alcohol Results' <- as.vector(crash$'Alcohol Results')
+crash$'Person Type' <- as.vector(crash$'Person Type')
+
+crash$drunk.driver <- ifelse(crash$'Alcohol Results'>= 0.08,1,0)
+```
+
+## Run the analysis!
+```{r k proto}
+## Elbow Curve
+#Based on this, I'll try out k as 3, 6, and 8.
+wss <- (nrow(crash.preprocess)-1)*sum(apply(crash.preprocess,2,var))
+for (i in 2:10) wss[i] <- sum(kproto(crash.preprocess,
+                                     k=i)$withinss)
+plot(1:10, wss, type="b", xlab="Number of Clusters",
+     ylab="Within Sum of Squares", main = "Number of Clusters (k) versus Within Cluster SS")
+
+set.seed(123)
+
+crash_clusters_4 <- kproto(crash.preprocess, k=4) 
+
+crash_clusters_4$size
+
+crash$cluster <- crash_clusters_4$cluster
+
+subset(crash, cluster==1)
+subset(crash, cluster==2)
+subset(crash, cluster==3)
+subset(crash, cluster==4)
+
+```
+
+##Looks like k=4 will work for this, we can look more deeply at the characteristics of each cluster.
+```{r cluster review}
+
+aggregate(data = crash, Age ~ cluster, mean)
+
+#Breaking up the clusters into tables to take a look.
+cluster.1 <- filter(crash,crash$cluster== 1 )
+cluster.2 <- filter(crash,crash$cluster== 2 )
+cluster.3 <- filter(crash,crash$cluster== 3 )
+cluster.4 <- filter(crash,crash$cluster== 4 )
+
+#All the clusters are fairly even in size.
+print(crash_clusters_4$size)
+
+#Mostly states outside the potential markets
+table(cluster.1$Region)
+#High concentration of South and Northeastern states
+table(cluster.2$Region)
+#Mostly Western
+table(cluster.3$Region)
+#Mostly Midwest
+table(cluster.4$Region)
+
+#high fatal injury
+table(cluster.1$"Injury Severity")
+#high no/non incapacitating injury
+table(cluster.2$"Injury Severity")
+#Very high fatal injury
+table(cluster.3$"Injury Severity")
+#very high no injury
+table(cluster.4$"Injury Severity")
+
+#34% Drunk Drivers
+table(cluster.1$drunk.driver)
+#80% Drunk Drivers
+table(cluster.2$drunk.driver)
+#90% Drunk Drivers
+table(cluster.3$drunk.driver)
+#69% Drunk Drivers
+table(cluster.4$drunk.driver)
+
+#Mostly Rural
+table(cluster.1$Roadway.1)
+#Mostly Rural
+table(cluster.2$Roadway.1)
+#Mostly Rural
+table(cluster.3$Roadway.1)
+#Mostly Urban
+table(cluster.4$Roadway.1)
+
+
+#Mostly Male
+table(cluster.1$Gender)
+#Mostly Male
+table(cluster.2$Gender)
+#Just slightly more males than females
+table(cluster.3$Gender)
+#Mostly Female individuals
+table(cluster.4$Gender)
+
+
+#All the weather conditions are pretty evenly distributed.
+table(cluster.1$'Atmospheric Condition')
+table(cluster.2$'Atmospheric Condition')
+table(cluster.3$'Atmospheric Condition')
+table(cluster.4$'Atmospheric Condition')
+```

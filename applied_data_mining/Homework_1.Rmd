@@ -1,0 +1,240 @@
+---
+title: 'HW #1 Template'
+author: "Corey Austen"
+date: '`r Sys.Date()`'
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# The Business Problem
+
+You were recently hired as a data scientist by Universal Bank. The bank’s Vice President is interested in building a model to help predict when users might respond to a campaign to take out a personal loan. She supplies you with a dataset containing information of 5,000 customers and attaches a description about the dataset (see page 3 of this assignment). 
+
+The VP tells you that another analyst has created a logistic regression model and hands you an R code file (please download the Template_HW_1.Rmd file).
+
+## Data file description
+
+The file **UniversalBank.csv** contains data on 5,000 customers. The data include customer demographic information (age, income, etc.), the customer’s relationship with the bank (mortgage, securities accounts, etc.), and the customer response to the last personal loan campaign (Personal.Loan). Among these 5,000 customers, only 480 (9.6%) accepted the personal loan that was offered to them in the earlier campaign.  
+
+
+Here is a description of each variable in the Universal Bank dataset:    
+
+**ID**: Customer ID   
+
+**Age**: Customer’s age in years    
+
+**Experience**: Number of years of professional work experience  
+
+**Income**: Annual income in thousands of dollars ($000)  
+
+**Zip.Code**: Zip code of home address  
+
+**Family**: Customer's family size  
+
+**CC Avg**: Average spending on credit cards per month in thousands of dollars ($000)  
+
+**Education**: Education level where 1 = Undergraduate; 2 = Graduate; and 3=Advanced/Professional  
+
+**Mortgage**: Value of house mortgage if any; in thousands of dollar ($000)  
+
+**Personal.Loan**: Did the customer accept a personal loan offered in the bank’s last campaign? 1=Yes; 0 = No  
+
+**Securities.Account**: Does the customer have a securities account with the bank? 1 = Yes; 0 = No  
+
+**CD.Account**: Does the customer have a certificate of deposit (CD) account with the bank? 1 = Yes; 0 = No  
+
+**Online**: Does the customer use Internet banking facilities? 1 = Yes; 0 = No  
+
+**Credit.Card**: Does the customer use a credit card issued by Universal Bank? 1 = Yes; 0 = No  
+
+##Data File Prep  
+
+We will drop the ID and Zip.Code columns and also recode Education variable into a factor variable.
+ 
+```{r data prep}
+bank.df <- read.csv("C:/Users/ca034330/Google Drive/Corey - School/Fall 2017 B/BIA 6301 - Applied Data Mining/Homework #1/UniversalBank.csv")
+bank.df <- bank.df[,-c(1,5)] # drop ID and zip code columns.  
+# create categorical variable for education
+bank.df$Education <- factor(bank.df$Education, levels = c(1,2,3), labels = c("Undergrad", "Graduate", "Advanced/Professional"))
+```
+
+## Logistic Regression Model
+```{r logit}
+logit.reg <- glm(bank.df$Personal.Loan ~., data = bank.df, family = "binomial")
+options(scipen=999)
+
+summary(logit.reg)
+exp(cbind(Odds=coef(logit.reg)))
+```
+
+## Setup New Customer
+```{r customer setup}
+new.customer <- data.frame(Age=38,Experience=17,Income=150,Family=1,CCAvg=0.2,Education="Graduate",Mortgage=0,Securities.Account=0,CD.Account=0,Online=1,CreditCard=1)
+```
+
+## Predict New Customer
+```{r customer}
+nc_pred <- predict(logit.reg, new.customer, type="response")
+nc_tabs <- table(nc_pred)
+```
+#Decision Tree
+```{r tree}
+bank.df <- read.csv("C:/Users/ca034330/Google Drive/Corey - School/Fall 2017 B/BIA 6301 - Applied Data Mining/Homework #1/UniversalBank.csv")
+bank.df <- bank.df[,-c(1,5)] 
+bank.df$Education <- factor(bank.df$Education, levels = c(1,2,3), labels = c("Undergrad", "Graduate", "Advanced/Professional"))
+
+loan_n<-bank.df[,c(8,1:7,9:12)]
+
+dim(loan_n)
+
+library(rpart)
+library(rpart.plot)
+set.seed(123)
+
+loan_train <- loan_n[1:4000, ]
+loan_test <- loan_n[4001:5000, ]
+
+names(loan_n)
+
+prop.table(table(loan_train$Personal.Loan))
+prop.table(table(loan_test$Personal.Loan))
+
+set.seed(123)
+loan_rpart <- rpart(loan_train$Personal.Loan~., method="class", parms = list(split="gini"), data=loan_train)
+
+prp(loan_rpart, type=1, extra=1, split.font=1, varlen = -10)
+
+rpart.plot(loan_rpart, type=0, extra=101)
+
+cptable<-printcp(loan_rpart)
+cptable
+plotcp(loan_rpart, minline=TRUE, col="red") 
+
+set.seed(123)
+loan_rpart_elbow <- rpart(loan_train$Personal.Loan~., method="class", parms = list(split="gini"), control=rpart.control(maxdepth=5), data=loan_train)
+
+rpart.plot(loan_rpart_elbow, type=0, extra=101)
+
+rpart_pred <- predict(loan_rpart, loan_test, type="class")
+
+rpart_tabs <- table(rpart_pred,loan_test$Personal.Loan, dnn=c("Predicted", "Actual"))
+print(rpart_tabs)
+prop.table(rpart_tabs)
+```
+
+# Confusion Matrix - Tree
+
+```{r trees matrix}
+true.positive <-75
+true.negative <- 910
+false.positive <- 7
+false.negative <- 8
+total <- true.positive + true.negative + false.positive + false.negative
+
+accuracy.rate <- (true.positive + true.negative)/total
+sensitivity <- true.positive/(true.positive + false.negative)
+specificity <- true.negative/(true.negative + false.positive)
+precision <- true.positive/(true.positive + false.positive)
+
+table_rpart <- cbind(accuracy.rate, sensitivity, specificity, precision)
+print(table_rpart)
+```
+
+#Naive Bayes
+
+```{r Naive Bayes}
+library(e1071)
+
+loan_n$Personal.Loan <- factor(loan_n$Personal.Loan)
+loan_train <- loan_n[1:4000, ]
+loan_test <- loan_n[4001:5000, ]
+
+
+loan_nb<- naiveBayes(Personal.Loan ~ ., data = loan_train)
+
+
+nb_pred <- predict(loan_nb, loan_test)
+nb_tabs <- table(nb_pred,loan_test$Personal.Loan, dnn=c("Predicted", "Actual")) #first listed variable is rows
+print(nb_tabs)
+prop.table(nb_tabs)
+```
+
+## Confusion Matrix - NB
+
+```{r nb matrix}
+true.positive <- 46
+true.negative <- 841
+false.positive <- 76
+false.negative <- 37
+total <- true.positive + true.negative + false.positive + false.negative
+
+accuracy.rate <- (true.positive + true.negative)/total
+sensitivity <- true.positive/(true.positive + false.negative)
+specificity <- true.negative/(true.negative + false.positive)
+precision <- true.positive/(true.positive + false.positive)
+
+table_nb <- cbind(accuracy.rate, sensitivity, specificity, precision)
+print(table_nb)
+```
+
+# K-Nearest Neighbors
+
+```{r knn}
+library(class)
+bank.df <- read.csv("C:/Users/ca034330/Google Drive/Corey - School/Fall 2017 B/BIA 6301 - Applied Data Mining/Homework #1/UniversalBank.csv")
+bank.df <- bank.df[,-c(1,5)] 
+
+bank.df<-bank.df[,c(8,1:7,9:12)]
+
+loan_z <- as.data.frame(scale(bank.df[-1]))
+
+summary(bank.df$Mortgage)
+
+summary(loan_z$Mortgage) #notice that the max value is not compressed towards 1.
+
+loan_z_train<-loan_z[1:4000, ]
+loan_z_test<-loan_z[4001:5000, ]
+
+loan_z_train_labels<-bank.df[1:4000,1]
+loan_z_test_labels<-bank.df[4001:5000,1]
+
+set.seed(123)
+loan_z_pred <- knn(train=loan_z_train, test=loan_z_test, cl=loan_z_train_labels, k=141)
+
+knn_z_tabs <- table(loan_z_pred, loan_z_test_labels, dnn=c("Predicted", "Actual"))
+knn_z_tabs
+prop.table(knn_z_tabs)
+```
+
+## Confusion Matrix - KNN
+
+```{r knn matrix}
+true.positive <- 19
+true.negative <- 916
+false.positive <- 64
+false.negative <- 1
+total <- true.positive + true.negative + false.positive + false.negative
+
+accuracy.rate <- (true.positive + true.negative)/total
+sensitivity <- true.positive/(true.positive + false.negative)
+specificity <- true.negative/(true.negative + false.positive)
+precision <- true.positive/(true.positive + false.positive)
+
+table_knn <- cbind(accuracy.rate, sensitivity, specificity, precision)
+print(table_knn)
+```
+
+# Comparison
+
+```{r compare.cm}
+print(table_rpart)
+print(table_nb)
+print(table_knn)
+```
+
+# Decision Tree is the most accurate model.

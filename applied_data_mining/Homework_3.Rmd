@@ -1,0 +1,78 @@
+---
+title: "HW_3"
+author: "Corey Austen"
+date: "December 3, 2017"
+output: html_document
+---
+## Load the packages you need
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(pls)
+library(glmnet)
+library(ggplot2)
+library(ggrepel)
+```
+
+## Load the dataset
+```{r load}
+univ<- read_csv("C:/Users/ca034330/Google Drive/Corey - School/Fall 2017 B/BIA 6301 - Applied Data Mining/HW_3/data/Universities.csv")
+```
+
+##Time to remove missing values and categorical variables so we can perform PCA.
+```{r cleaning}
+univ<- na.omit(univ)
+univ<- univ[,-c(1,2)]
+```
+
+##Lets take a look at this without normalizing it first.
+```{r non-normalized}
+set.seed(123)
+pcs<-prcomp(univ)
+#Variance is very high on the first two variables.
+summary(pcs)
+
+
+pcs.variance.explained <-(pcs$sdev^2 / sum(pcs$sdev^2))*100
+#Creating a bar plot to compare them.  The first variable is 56% of the proportion, and the second is 36%, meaning the first two combined are 92%, which seems heavy.
+barplot(pcs.variance.explained, las=2, xlab="Principal Component", ylab="% Variance Explained", main="Principal Components versus Percent of Variance Explained")
+# 
+pcs$rotation
+```
+
+##Time to normalize this to see if the results are much different.
+```{r normalize}
+set.seed(123)
+pcs<-prcomp(univ, scale. = T) 
+
+#There is a pretty stark difference between normalized and non-normalized data.  The first two variables only constitute 58% of the variance.
+summary(pcs)
+
+pcs.variance.explained <-(pcs$sdev^2 / sum(pcs$sdev^2))*100
+#The barplot looks more realistic than the non-normalized data.
+barplot(pcs.variance.explained, las=2, xlab="Principal Component", ylab="% Variance Explained", main="Principal Components versus Percent of Variance Explained")
+
+screeplot(pcs, type="line")
+#Here we can see the impact of the variables.
+pcs$rotation
+```
+##If we were to hypothetically run kmeans on this, we can at least look at how it would be set up.
+```{r clusters}
+data <- scale(univ)
+# Elbow Method for finding the optimal number of clusters in this dataset.
+set.seed(123)
+k.max <- 15
+wss <- sapply(1:k.max, 
+ function(k){kmeans(data, k)$tot.withinss})
+wss
+
+#Based on this, I would run with 4-8 clusters.
+plot(1:k.max, wss,
+ type="b", pch = 19, frame = FALSE, 
+ xlab="Number of clusters K",
+ ylab="Total within-clusters sum of squares")
+```
+
+
+
+
