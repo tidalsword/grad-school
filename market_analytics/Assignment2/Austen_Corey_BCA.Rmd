@@ -1,0 +1,425 @@
+---
+title: "Austen_Corey_BCA_Assignment_2"
+output:
+  word_document: default
+  html_notebook: default
+editor_options:
+  chunk_output_type: inline
+---
+
+Conduct a factor analysis on the demographic, socio-economic, and environmental variables (SED) to generate an interpretable variable list (factors) as the new set of independent variables.
+You need to:
+.	Select the proper number of factors
+.	Interpret each factor (the main items loaded on the factor). What nature of the SED variables are represented by each of the factors
+.	Give a nickname for each of the factors, for example, "high income", "growth", and so on, depending on the nature of each factor.
+.	List 10 MSAs that have highest and lowest factor scores for each factor you identified. Discuss if they match what you expected (face validity of the factors).
+
+Remember: before you run factor analysis, in each sub-category list of variables that can add up to 100%, you must drop at least on item to avoid perfect multi-collinearity. For example, when male and female can add up to 100% of population, you must drop one of them from the category. This is also called an ill-conditioned matrix, arises when two or more variables are perfectly redundant. Singularity prevents the matrix from being inverted and prevents a reliable solution.
+
+The groups of this type are shown below. So you need to choose to remove one item in each group before you run Factor Analysis. A general rule is to exclude an item that carries relatively less information, for example, a medium range item. It may take some trials of FAs before we have the final solution.
+
+```{r setup, include=FALSE}
+#knitr::opts_knit$set(root.dir = normalizePath("C:/Users/ca034330/Google Drive/Corey - School/!Spring 2019 B/MK 6460 - Marketing Research & Analytics/Assignment2/"))
+knitr::opts_knit$set(root.dir = normalizePath("D:/Google Drive/Corey - School/!Spring 2019 B/MK 6460 - Marketing Research & Analytics/Assignment2/"))
+```
+
+```{r library, include=FALSE}
+library(nFactors)
+library(psych)
+library(GPArotation)
+library(plyr)
+```
+
+```{r load, include=FALSE}
+#Import the dataset
+retail <- read.csv("retail.csv")
+#names(retail)
+```
+
+```{r drops, include=FALSE}
+#Removing the dependent variables and one variable from each sub-group
+drops <- c("Share100_4445_72","Share4451_722","Groc_non_food","Groc_food","S100_H","S120_H","pq_g","pq_r","pqr_nonfood","pqr_food","Groc_non_food1","Groc_food1","Sr4451_100","Sr722_120","Nr4451_100","Nr722_120","t_married_separated","t_Vehic_2","t_hhdincomek30_40","t_employed","t_edu_assoc","t_traveltime5","t_trans_other","t_work_outresidence","t_owner_hous","t_hhd_3p","t_hhder55_64","t_age55_64","t_female","t_other_race")
+
+retail0 <- retail[ , !(names(retail) %in% drops)]
+
+#We set the row names as the MSAs
+rownames(retail0) <- retail[, 1]
+retail1 <- retail0[, -1]
+```
+
+```{r missing, include=FALSE}
+#Replacing missing observations with variable means
+retail1[] <- lapply(retail1, function(x) { 
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+})
+
+#Running nScree give some indicators about the suggested number of factors
+nScree(retail1)
+```
+
+Based on the Scree tests, the optimal number of factors is 9 to 11.  Having run through the 3 different configurations, I decided to go with 9 factors because the variable combinations made the most sense.
+
+```{r eig, message=FALSE, echo=FALSE, warning=FALSE}
+#Get eigenvalues. They should be >1 in order to be considered. But a factor with eigenvalue >1 doesn't have to be included if we have too many factors (need decisions from researchers)
+eig<- eigen(cor(retail1))
+#eig$values
+
+#This way gives the graph showing suggested number of factors. In the real research, researchers need to decide the final number based on the real needs (trade-off between parsimony and information richness)
+ap <- parallel(subject=nrow(retail1),var=ncol(retail1))
+nS <- nScree(x=eig$values, aparallel=ap$eigen$qevpea)
+plotnScree(nS)
+
+#The method to get the number of factors in "psych" 
+#If you see a warning message, it is in general ok
+#We see the "eigenvalues of components" have 8 numbers greater than 1. But we can choose 6 if we would like to see a little bit more simplified model
+parallel <- fa.parallel(retail1, fm = 'minres', fa = 'fa')
+#parallel
+
+
+#We run FA using "Varimax" rotation with "minres" (minimum residual)
+#The "scores=" gives the factor scores that we will use in future steps. This is another important step
+#In larger datasets, you might see a warning message, it is in general ok
+retail.fa <- fa(retail1,nfactors = 9,rotate = "Varimax",fm="minres",scores="regression")
+#retail.fa
+#The root mean square of residuals (RMSR) is 0.05. This is acceptable as this value should be closer to 0. 
+#RMSEA ranges from 0 to 1, with smaller values indicating better model fit. 
+
+
+#We then print factor loadings. We will interpret what variables are loaded on what factor and we can term the factor with a new name
+#For example, in this case, we can see that the first factor is mainly "Income" based (per_capita and others are positively loaded, while low income items are negatively loaded, and so on)
+#Therefore, we can rename this factor as "High Income"
+#The "cutoff=" will filter any loadings lower than this cutoff point. In this case, we set it as 0.4. A loading lower than 0.4 will not be shown because they are not highly influential for the focal factor
+#Remember: both positive and negative loading are useful for indicating the meaning of a factor
+#print(retail.fa$loadings,cutoff = 0.4, sort = TRUE)
+
+#This function visually shows the loading
+fa.diagram(retail.fa)
+
+#Next, we get the factor scores
+#Now, the large variable set is represented by the newly generated factors (reduced redundancy). You can rename each factor according to the variable loaded on it. This is sometimes a hard task.
+retail.score<-as.data.frame(retail.fa$scores)
+
+#Rename the new factors (in the real analysis, you need to rename them to the appropriate names such as "High Income", "Youth", and so on)
+colnames(retail.score) <- c(paste("F",1:9,sep=""))
+#retail.score
+
+#Combine the new factors to the original dataset (if needed).
+retail.final<-cbind(retail, retail.score)
+
+#names(retail.final)
+#head(retail.final)
+
+png(file="Factor Analysis.png", width=2048, height=2048, res = 300)
+fa.diagram(retail.fa)
+dev.off()
+
+#Remember, after FA, we can use the newly generated factors in further research steps. For example, we can use the "High Income" and all the other factors to predict certain outcome variables in a regression. (We will see that in our 2nd assignment)
+```
+
+o	F1 - This is an obvious income-based factor, variables that positively impact are "household income over 100k", "per capita", "household income 75-100k", "median value".  Variables that have a negative effect are low income variables, like "household income 20-30k", "household income below 20k", and "9th to 12th grade education".
+
+o	F2 - This factor is age based.  The most influential are higher age range variables that have negative influence (householder 65-74 years, age 65-74 years), and the most positively influential factors are lower age range variables, like "householder 25-34 years", "age 25-34 years", and "never married."
+
+o	F3 - Variables seem to be transportation related, specifically no vehicles and public transportation use.  The variables that have negative scores are centered on multiple vehicle ownership and private transportation use.
+
+o	F4 - Factor includes variables related to household size, with positive scores on variables of household of 5 people, household of 6 or more people.  It also positive scores for "Hispanic", "education less than 9th grade", and "unemployed".  The negative scores are smaller households or 1 or 2 people.
+
+o	F5 - Factor appears to be related to travel time, with positive scores on travel times of 30-44 and 45-59, as well as low scores from travel times of 5-14.  Interestingly, this also seems to be linked to race, with positive scores from black residents and negative scores from white residents.
+
+o	F6 - This factor is interesting in that the variables don't seem to make sense together, such as "divorced", "some college education", "work in residence" "single fathers", "work in central city", and "Indian".
+
+o	F7 - Factor is also related to income, with the only positive score linked to "below poverty line" and negative scores from income brackets of 40-50k and 50-60k.
+
+o	F8 - Age related factor, with positive scores of ages 35-44, 45-54, and householder 45-54.  Interestingly, this also has negative scores from household and population growth.
+
+o	F9 - Factor that seems to be a collection of outliers, such as "work at home", "male", and "traveltime over 90 minutes."
+
+
+.	Give a nickname for each of the factors, for example, "high income", "growth", and so on, depending on the nature of each factor.
+
+```{r rename}
+# Rename factors
+colnames(retail.score)[colnames(retail.score)=="F1"] <- "high.income"
+colnames(retail.score)[colnames(retail.score)=="F2"] <- "young.single"
+colnames(retail.score)[colnames(retail.score)=="F3"] <- "public.transit"
+colnames(retail.score)[colnames(retail.score)=="F4"] <- "large.hisp.fam"
+colnames(retail.score)[colnames(retail.score)=="F5"] <- "black.commuters"
+colnames(retail.score)[colnames(retail.score)=="F6"] <- "single.parents"
+colnames(retail.score)[colnames(retail.score)=="F7"] <- "poverty"
+colnames(retail.score)[colnames(retail.score)=="F8"] <- "adults"
+colnames(retail.score)[colnames(retail.score)=="F9"] <- "travel.other"
+```
+
+high.income - This matches what I would expect, MSAs with high scores on "high.income" such as Norwalk, CT, have a high average income.  MSAs with low scores, like Danville, VA, have a lower average income.
+
+
+
+```{r, echo=FALSE}
+
+high.income <- retail.score[order(-retail.score$high.income),]
+high.income1 <- high.income[,"high.income", drop=FALSE]
+head(high.income1, n=10)
+tail(high.income1, n=10)
+```
+
+young.single - Matches what I would expect.  MSAs with high "young.single" scores are all college towns, where as those with low scores are towns with a large retirement community. 
+
+```{r, echo=FALSE}
+young.single <- retail.score[order(-retail.score$young.single),]
+young.single1 <- young.single[,"young.single", drop=FALSE]
+head(young.single1, n=10)
+tail(young.single1, n=10)
+```
+
+public.transit - Matches what I would expect.  MSAs with high scores here are New York City and Jersey City.  Those with low scores are resort towns or have very little in terms of public transit
+
+```{r, echo=FALSE}
+public.transit <- retail.score[order(-retail.score$public.transit),]
+public.transit1 <- public.transit[,"public.transit", drop=FALSE]
+head(public.transit1, n=10)
+tail(public.transit1, n=10)
+```
+
+large.hisp.fam - Matches what I would expect.  MSAs with high scores are towns along the US/Mexico border.  MSAs with low scores are located in the Midwest or further from the Mexico border. 
+
+```{r, echo=FALSE}
+large.hisp.fam <- retail.score[order(-retail.score$large.hisp.fam),]
+large.hisp.fam1 <- large.hisp.fam[,"large.hisp.fam", drop=FALSE]
+head(large.hisp.fam1, n=10)
+tail(large.hisp.fam1, n=10)
+```
+
+black.commuters - This matches what I expect.  The MSAs with high scores have large black populations, whereas those with low scores have high white populations. 
+
+```{r, echo=FALSE}
+black.commuters <- retail.score[order(-retail.score$black.commuters),]
+black.commuters1 <- black.commuters[,"black.commuters", drop=FALSE]
+head(black.commuters1, n=10)
+tail(black.commuters1, n=10)
+```
+
+single.parents - This doesn't quite show what I expected.  The factor seems to be a bit random anyway, so I am not surprised by this overall.  The MSAs with high and low scores don't seem to have an underlying theme as far as I can tell. 
+
+```{r, echo=FALSE}
+single.parents <- retail.score[order(-retail.score$single.parents),]
+single.parents1 <- single.parents[,"single.parents", drop=FALSE]
+head(single.parents1, n=10)
+tail(single.parents1, n=10)
+```
+
+poverty - This lines up somewhat with how I expected.  The amount of people living below the poverty line in MSAs in both the high and low ranges are very similar. 
+
+```{r, echo=FALSE}
+poverty <- retail.score[order(-retail.score$poverty),]
+poverty1 <- poverty[,"poverty", drop=FALSE]
+head(poverty1, n=10)
+tail(poverty1, n=10)
+```
+
+adults - The MSAs with high scores have high concentrations of adults, whereas those with low scores have more young people. 
+
+```{r, echo=FALSE}
+adults <- retail.score[order(-retail.score$adults),]
+adults1 <- adults[,"adults", drop=FALSE]
+head(adults1, n=10)
+tail(adults1, n=10)
+```
+
+travel.other - This what I would expect.  The MSAs with high scores are more than an hour and a half form a metropolitan area, so the commute would be longer, and MSAs with low scores are either close to or are metropolitan areas themselves. 
+
+```{r, echo=FALSE}
+travel.other <- retail.score[order(-retail.score$travel.other),]
+travel.other1 <- travel.other[,"travel.other", drop=FALSE]
+head(travel.other1, n=10)
+tail(travel.other1, n=10)
+```
+
+```{r}
+d.var <- retail[, c("Share100_4445_72","Share4451_722","Groc_non_food","Groc_food","S100_H","S120_H","pq_g","pq_r","pqr_nonfood","pqr_food","Groc_non_food1","Groc_food1","Sr4451_100","Sr722_120","Nr4451_100","Nr722_120")]
+```
+
+```{r}
+factors <- cbind(retail.score,d.var)
+```
+
+```{r}
+factors[] <- lapply(factors, function(x) { 
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+})
+```
+
+Share100_4445_72:"Sales of ML100 / (Sales of ML100 and ML120)"
+
+Based on this model, the percentage of grocery sales compared to that of resturants increases in areas of higher poverty rates and large Hispanic families, but drops in areas of high income, young.single, and adults.  This makes sense since people with less disposible income are going to spend more of their income at a grocery store.
+
+```{r, echo=FALSE}
+#Build the logistic regression model using glm() and "family = binomial"
+pur.model.1 <-  lm(Share100_4445_72 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+#Check the model results
+summary(pur.model.1)
+#How to interpret the results? For example, what does the 0.03111 of "Working.days" mean? It means when the number of days working increases by 1 unit (day), the LOGIT of purchase the cereal will increase by 0.03111.
+#Similiarly, the 2.237946 of "Favorite.stores1" means when compared to the base level "Favorite.stores0", the consumers have 1 favorite store nearby will have an increased LOGIT by 2.37936.
+
+
+#The LOGITs is hard to interpret; therefore we can convert them to the "odds ratios" for better interpretation
+#options(scipen=999) 
+#exp(coef(pur.model.1))
+#Now we can see that having one more working day will likely increase 0.031599% chance to purchase the cereal
+#Similarly, having 1 favorite store will dramatically increase the likelihood of purchasing the cereal (8.602803 times!)
+```
+
+```{r, include=FALSE}
+pur.model.2 <-  lm(Share4451_722 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.2)
+
+#options(scipen=999) 
+#exp(coef(pur.model.2))
+```
+
+```{r, include=FALSE}
+pur.model.3 <-  lm(Groc_non_food ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.3)
+
+options(scipen=999) 
+exp(coef(pur.model.3))
+```
+
+```{r, include=FALSE}
+pur.model.4 <-  lm(Groc_food ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.4)
+
+options(scipen=999) 
+exp(coef(pur.model.4))
+```
+
+```{r, include=FALSE}
+pur.model.5 <-  lm(S100_H ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.5)
+
+options(scipen=999) 
+exp(coef(pur.model.5))
+```
+
+```{r, include=FALSE}
+pur.model.6 <-  lm(S120_H ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.6)
+
+options(scipen=999) 
+exp(coef(pur.model.6))
+```
+
+```{r, include=FALSE}
+pur.model.7 <-  lm(pq_g ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.7)
+
+options(scipen=999) 
+exp(coef(pur.model.7))
+```
+
+pq_r:"Restaurant sales per household"
+
+The outcome from this model definitely makes sense, as more wealthy people would go out to eat mroe often.  Age does not seem to make a difference, as both young.single and adults add to this.  Poverty and large.hisp.fam bring this down, since populations with less disposible income are bound to spend less at resturants.
+
+```{r, echo=FALSE}
+pur.model.8 <-  lm(pq_r ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.8)
+
+#options(scipen=999) 
+#exp(coef(pur.model.8))
+```
+
+```{r, include=FALSE}
+pur.model.9 <-  lm(pqr_nonfood ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.9)
+
+options(scipen=999) 
+exp(coef(pur.model.9))
+```
+
+```{r, include=FALSE}
+pur.model.10 <-  lm(pqr_food ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.10)
+
+#options(scipen=999) 
+#exp(coef(pur.model.10))
+```
+
+```{r, include=FALSE}
+pur.model.11 <-  lm(Groc_non_food1 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.11)
+
+#options(scipen=999) 
+#exp(coef(pur.model.11))
+```
+
+```{r, include=FALSE}
+pur.model.12 <-  lm(Groc_food1 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.12)
+
+#options(scipen=999) 
+#exp(coef(pur.model.12))
+```
+
+Nr4451_100:"Number of grocery stores (handling ML100) per household"
+
+This would makes sense because a lack public transit, commuting, and travel, along with high.income, more young single people, and adults imply a suburban area, a college town, or a resort/retirement community.  Areas like this tend to have more sprawl or more areas for shopping. 
+
+```{r, echo=FALSE}
+pur.model.13 <-  lm(Sr4451_100 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.13)
+
+#options(scipen=999) 
+#exp(coef(pur.model.13))
+```
+
+Sr722_120:"ML120 sales per restaurant"
+
+The outcome from this one is surprising. I would have thought income would play a bigger role here, but the model didn't find high.income to be significant.  It did however, find that poverty was significant in that it increases ML120 sales per restaurant as it drops.  We also see it increases as young.single, single.parents, black.commuters, and adults increase in score.  I interpret this to mean populations with middle class incomes increase sales per resturant.
+
+```{r, echo=FALSE}
+pur.model.14 <-  lm(Sr722_120 ~ black.commuters + young.single + public.transit + large.hisp.fam + high.income + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.14)
+
+#options(scipen=999) 
+#exp(coef(pur.model.14))
+```
+
+```{r, include=FALSE}
+pur.model.15 <-  lm(Nr4451_100 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.15)
+
+#options(scipen=999) 
+#exp(coef(pur.model.15))
+```
+
+```{r, include=FALSE}
+pur.model.16 <-  lm(Nr722_120 ~ high.income + young.single + public.transit + large.hisp.fam + black.commuters + single.parents + poverty + adults + travel.other, data = factors, family = binomial)
+
+summary(pur.model.16)
+
+options(scipen=999) 
+exp(coef(pur.model.16))
+```
+
+Conclusion:
+
+Based on the outcome from the models run, a company would want to open a grocery store in a suburban area with average to low income as they would likely see more income overall than if they put a grocery store into a wealthier MSA.  However, opening a resturant would be a wise choice in a wealthy MSA, areas where there are large populations of commuters traveling in and out of the area, and areas where there are more young people.
+
+
